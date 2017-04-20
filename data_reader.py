@@ -42,24 +42,32 @@ def get_dataset_size(Annotations_loc,Image_loc):
     else:
         return 'Image size does not match with the Annotations '
 
-def main(Annotations_loc,Image_loc,i):
-    filelist = Get_file_inference(Annotations_loc)
-    Anno_Loc = Annotations_loc + filelist[i]
-    Annotations,Annotations_name=Get_Annotation(Anno_Loc)
-    image_loc = Image_loc+'*.jpg'
-    coll=Get_Image(image_loc)
-    return Annotations,Annotations_name, coll[i]
-
-if __name__ == "__main__":
+def main():
     Annotations_loc = 'Annotations/'
     Image_loc = 'JPEGImages/'
     max_num = get_dataset_size(Annotations_loc,Image_loc)
     if isinstance(max_num, int):
         index = random.randint(0, max_num)
-        label, label_name,iamge = main(Annotations_loc,Image_loc,index)
+        filelist = Get_file_inference(Annotations_loc)
+        Anno_Loc = Annotations_loc + filelist[index]
+        Annotations,Annotations_name=Get_Annotation(Anno_Loc)
+        image_loc = Image_loc+'*.jpg'
+        coll=Get_Image(image_loc)
+        return Annotations,Annotations_name, coll[index]
     else:
         print(max_num)
-    print(label, label_name,iamge.shape)
+if __name__ == "__main__":
+    Annotations,Annotations_name, Image=main()
+    print(Annotations,Annotations_name, Image.shape)
+
+
+
+
+
+
+
+
+
 
 
 
