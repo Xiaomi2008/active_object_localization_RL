@@ -53,16 +53,13 @@ def main():
         Annotations,Annotations_name=Get_Annotation(Anno_Loc)
         image_loc = Image_loc+'*.jpg'
         coll=Get_Image(image_loc)
-        return Annotations,Annotations_name, coll[index]
+        yield Annotations,Annotations_name,coll[index]
     else:
         print(max_num)
 if __name__ == "__main__":
-    Annotations,Annotations_name, Image=main()
-    print(Annotations,Annotations_name, Image.shape)
-
-
-
-
+    TRAIN = main()
+    b = next(TRAIN)
+    print(b)
 
 
 
