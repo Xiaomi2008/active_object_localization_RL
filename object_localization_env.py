@@ -36,6 +36,29 @@ def index_of _largest_IOU(input_bbox,all_bbox):
 			max_iou=iou
 			index = i
 	return i
+ def deform_bbox(bbox,x_size,y_size,dx1,dy1,dx2,dy2):
+ 	assert(abs(dx1)=abs(dx2))
+ 	assert(abs(dy1)=abs(dy2))
+ 	if bbox[0][0]+dx1 <0:
+ 		if dx1==dx2:
+ 			dx2=-bbox[0][0]
+ 		dx1=-bbox[0][0]
+ 	if bbox[1][0]+dx2>x_size-1:
+ 		if dx1==dx2:
+ 			dx1=x_size-bbox[1][0]-1
+ 		dx2==x_size-bbox[1][0]-1
+ 	if bbox[0][1]+dy1 <0:
+ 		if dy1==dy2:
+ 			dy2=-bbox[0][1]
+ 		dy1=-bbox[0][1]
+ 	if bbox[1][1]+dy2>y_size-1:
+ 		if dy1==dy2:
+ 			dy1=y_size-bbox[1][1]-1
+ 		dy2==y_size-bbox[1][1]-1 
+
+ 	new_bbox=[[bbox[0,0]+dx1,bbox[0,1]+dy1],[bbox[0,1]+dy1,bbox[1,1]+dy2]]
+ 	return new_bbox
+
 
  class object_localization_env(object):
  	def __init__(self):
@@ -55,51 +78,88 @@ def index_of _largest_IOU(input_bbox,all_bbox):
  			self.update_current_bbox_with_action(action)
  			reward = self.get_reward()
  		else:
- 			reward = self.eta if bb_intersection_over_union(self.cur_bbox, self.objective_bbox) > self.tal else -1*self.tal
+ 			reward = self.eta if bb_intersection_over_union(self.cur_bbox, self.objective_bbox) > self.tal else -1*self.eta
 
- 	def get_reward():
+ 	def get_reward(self):
  		cur_iou = bb_intersection_over_union(self.cur_bbox, self.objective_bbox):
  		reward = 1 if cur_iou -self.previous_IOU else -1
  		self.previous_IOU =cur_iou
  		return reward
+
  	def update_current_bbox_with_action(action):
- 		alpha_w = self.action_alpha *(self.cur_bbox[1][0]-self.cur_bbox[0][0])
- 		alpha_h = self.action_alpha *(self.cur_bbox[1][1]-self.cur_bbox[1][0])
+ 		alpha_w = int(round(self.action_alpha *(self.cur_bbox[1][0]-self.cur_bbox[0][0])))
+ 		alpha_h = int(rount(self.action_alpha *(self.cur_bbox[1][1]-self.cur_bbox[1][0])))
  		if action == 0:
  			# move left
- 			self.cur_bbox = [[int(round(self.cur_bbox[0][0]-alpha_w)),self.cur_bbox[1][0]],
- 							[int(round(self.cur_bbox[1][0]-alpha_w)),self.cur_bbox[1][0]]]
+ 			# self.cur_bbox = [[int(round(self.cur_bbox[0][0]-alpha_w)),self.cur_bbox[1][0]],
+ 			# 				[int(round(self.cur_bbox[1][0]-alpha_w)),self.cur_bbox[1][0]]]
+ 			dx1=-alpha_w
+ 			dy1=0
+ 			dx2=-alpha_w
+ 			dy2=0
  		elif action ==1:
  			#move right
- 			self.cur_bbox = [[int(round(self.cur_bbox[0][0]+alpha_w)),self.cur_bbox[1][0]],
- 							[self.cur_bbox[1][0]+alpha_w,self.cur_bbox[1][0]]]
+ 			# self.cur_bbox = [[int(round(self.cur_bbox[0][0]+alpha_w)),self.cur_bbox[1][0]],
+ 							# [self.cur_bbox[1][0]+alpha_w,self.cur_bbox[1][0]]]
+ 			dx1=alpha_w
+ 			dy1=0
+ 			dx2=alpha_w
+ 			dy2=0
  		elif action ==2:
  			#move up
- 			self.cur_bbox = [[self.cur_bbox[0][0],int(round(self.cur_bbox[1][0]-alpha_h))],
- 							[self.cur_bbox[1][0],int(round(self.cur_bbox[1][0]-alpha_h))]]
+ 			# self.cur_bbox = [[self.cur_bbox[0][0],int(round(self.cur_bbox[0][1]-alpha_h))],
+ 			# 				[self.cur_bbox[1][0],int(round(self.cur_bbox[1][1]-alpha_h))]]
+ 			dx1=0
+ 			dy1=-alpha_h
+ 			dx2=0
+ 			dy2=-alpha_h
  		elif action ==3:
  			#move_down
- 			self.cur_bbox = [[self.cur_bbox[0][0],int(round(self.cur_bbox[1][0]+alpha_h))],
- 							[self.cur_bbox[1][0],int(round(self.cur_bbox[1][0]+alpha_h))]]
+ 			# self.cur_bbox = [[self.cur_bbox[0][0],int(round(self.cur_bbox[0][1]+alpha_h))],
+ 			# 				[self.cur_bbox[1][0],int(round(self.cur_bbox[1][1]+alpha_h))]]
+ 			dx1=0
+ 			dy1=alpha_h
+ 			dx2=0
+ 			dy2=alpha_h
  		elif action ==4:
  			#bigger
- 			self.cur_bbox =[[int(round(self.cur_bbox[0][0]-alpha_w/2)),int(round(self.cur_bbox[1][0]-alpha_h/2))],
- 							[int(round(self.cur_bbox[1][0]+alpha_w/2)),int(round(self.cur_bbox[1][0]+alpha_h/2))]]
+ 			# self.cur_bbox =[[int(round(self.cur_bbox[0][0]-alpha_w/2)),int(round(self.cur_bbox[1][0]-alpha_h/2))],
+ 			# 				[int(round(self.cur_bbox[1][0]+alpha_w/2)),int(round(self.cur_bbox[1][0]+alpha_h/2))]]
+ 			dx1=int(round(-alpha_w/2))
+ 			dy1=int(round(-alpha_h/2))
+ 			dx2=int(round(alpha_w/2))
+ 			dy2=int(round(alpha_h/2))
  		elif action ==5:
  			#smaller
- 			self.cur_bbox =[[int(round(self.cur_bbox[0][0]+alpha_w/2)),int(round(self.cur_bbox[1][0]+alpha_h/2))],
- 							[int(round(self.cur_bbox[1][0]-alpha_w/2)),int(round(self.cur_bbox[1][0]-alpha_h/2))]]
+ 			# self.cur_bbox =[[int(round(self.cur_bbox[0][0]+alpha_w/2)),int(round(self.cur_bbox[1][0]+alpha_h/2))],
+ 			# 				[int(round(self.cur_bbox[1][0]-alpha_w/2)),int(round(self.cur_bbox[1][0]-alpha_h/2))]]
+ 			dx1=int(round(alpha_w/2))
+ 			dy1=int(round(alpha_h/2))
+ 			dx2=int(round(-alpha_w/2))
+ 			dy2=int(round(-alpha_h/2))
  		elif action ==6:
  			# fatter 
- 			self.cur_bbox =[[self.cur_bbox[0][0],int(round(self.cur_bbox[1][0]+alpha_h/2))],
- 							[self.cur_bbox[1][0],int(round(self.cur_bbox[1][0]-alpha_h/2))]]
+ 			# self.cur_bbox =[[self.cur_bbox[0][0],int(round(self.cur_bbox[1][0]+alpha_h/2))],
+ 							# [self.cur_bbox[1][0],int(round(self.cur_bbox[1][0]-alpha_h/2))]]
+ 			dx1=0
+ 			dy1=int(round(alpha_h/2))
+ 			dx2=0
+ 			dy2=int(round(-alpha_h/2))
  		elif action ==7:
  			# Taller
- 			self.cur_bbox =[[int(round(self.cur_bbox[0][0]+alpha_w/2)),self.cur_bbox[1][0]+alpha_h/2],
- 							[int(round(self.cur_bbox[1][0]-alpha_w/2)),self.cur_bbox[1][0]-alpha_h/2]]
+ 			# self.cur_bbox =[[int(round(self.cur_bbox[0][0]+alpha_w/2)),self.cur_bbox[1][0]+alpha_h/2],
+ 							# [int(round(self.cur_bbox[1][0]-alpha_w/2)),self.cur_bbox[1][0]-alpha_h/2]]
+ 			dx1=int(round(alpha_w/2))
+ 			dy1=0
+ 			dx2=int(round(-alpha_w/2))
+ 			dy2=0
  		elif action==8:
  			# trigger
- 			pass
+ 			dx1=0
+ 			dy1=0
+ 			dx2=0
+ 			dy2=0
+ 		self.cur_bbox=deform_bbox(self.cur_bbox,x_size,y_size,dx1,dy1,dx2,dy2):
 
 
 class neuron_object_env(object_localization_env):
