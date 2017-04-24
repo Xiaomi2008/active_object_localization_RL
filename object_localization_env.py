@@ -3,6 +3,7 @@ import numpy as np
 import random
 import os.path
 import ipdb
+
 def bb_intersection_over_union(boxA, boxB):
  		# code from http://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
 		# determine the (x, y)-coordinates of the intersection rectangle
@@ -52,7 +53,7 @@ def deform_bbox(bbox,x_size,y_size,dx1,dy1,dx2,dy2):
  	if bbox[1][0]+dx2>x_size-1:
  		if dx1==dx2:
  			dx1=x_size-bbox[1][0]-1
- 		dx2==x_size-bbox[1][0]-1
+ 		dx2=x_size-bbox[1][0]-1
  	if bbox[0][1]+dy1 <0:
  		if dy1==dy2:
  			dy2=-bbox[0][1]
@@ -60,9 +61,9 @@ def deform_bbox(bbox,x_size,y_size,dx1,dy1,dx2,dy2):
  	if bbox[1][1]+dy2>y_size-1:
  		if dy1==dy2:
  			dy1=y_size-bbox[1][1]-1
- 		dy2==y_size-bbox[1][1]-1 
+ 		dy2=y_size-bbox[1][1]-1 
 
- 	new_bbox=[[bbox[0][0]+dx1,bbox[0][1]+dy1],[bbox[0][1]+dx2,bbox[1][1]+dy2]]
+ 	new_bbox=[[bbox[0][0]+dx1,bbox[0][1]+dy1],[bbox[1][0]+dx2,bbox[1][1]+dy2]]
  	return new_bbox
 def warp_image(image, bbox):
 	x_size=image.shape[0]
@@ -75,8 +76,8 @@ def warp_image(image, bbox):
 class object_localization_env(object):
  	def __init__(self):
  		self.data_obj =None
- 		self.init_box_x_range = [50,100]
- 		self.init_box_y_range = [50,100]
+ 		self.init_box_x_range = [200,300]
+ 		self.init_box_y_range = [200,300]
  		self.cur_bbox =None
 		self.objective_bbox =None
 		self.action_alpha=0.2
@@ -110,7 +111,7 @@ class object_localization_env(object):
 
  	def update_current_bbox_with_action(self,action):
  		alpha_w = int(round(self.action_alpha *(self.cur_bbox[1][0]-self.cur_bbox[0][0])))
- 		alpha_h = int(round(self.action_alpha *(self.cur_bbox[1][1]-self.cur_bbox[1][0])))
+ 		alpha_h = int(round(self.action_alpha *(self.cur_bbox[1][1]-self.cur_bbox[0][1])))
  		if action == 0:
  			# move left
  			# self.cur_bbox = [[int(round(self.cur_bbox[0][0]-alpha_w)),self.cur_bbox[1][0]],
@@ -263,17 +264,38 @@ class RL_neuron_data(RL_data):
  			bottom 	= max(seg_index[1])
  			obj_bbox.append([(left,top),(right,bottom)])
  		return obj_bbox
+def conver_bbox_to_xy_width_height(bbox):
+	x1=bbox[0][0]
+	y1=bbox[0][1]
+	width=bbox[1][0]-bbox[0][0]
+	height=bbox[1][1]-bbox[0][1]
+	return (x1,y1),width,height
+
 if __name__ == "__main__":
 	# test class and functions:
 	import matplotlib.pyplot as plt
+	import matplotlib.patches as patches
 	env = neuron_object_env()
+	fig,ax =plt.subplots(1)
 	for i in range(100):
 		action=random.randint(0,7)
 		warp_x, reward, terminal=env.localization_step(action)
+		bbox=env.cur_bbox
+		image =env.cur_image
 		print (warp_x.shape)
-		plt.imshow(warp_x,cmap='gray')
+		# 
+		ax.clear()
+		ax.imshow(image,cmap='gray')
+		# ax=plt.imshow(image,cmap='gray')
+		ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
+		ppxy_o,w_o,h_o=conver_bbox_to_xy_width_height(env.objective_bbox)
+		move_rect = patches.Rectangle(ppxy,w,h,linewidth=1,edgecolor='r',facecolor='none')
+		obj_rect =  patches.Rectangle(ppxy_o,w_o,h_o,linewidth=2,edgecolor='g',facecolor='none')
+		ax.add_patch(move_rect)
+		ax.add_patch(obj_rect)
 		plt.draw()
 		plt.pause(0.1)
+		# fig.clf()
 
 
 
