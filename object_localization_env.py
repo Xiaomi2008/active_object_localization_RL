@@ -4,10 +4,24 @@ import random
 import os.path
 import ipdb
 from skimage.measure import label
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from skimage.color.colorlabel import label2rgb
 def bb_intersection_over_union(boxA, boxB):
- 		# code from http://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
+ 		# This function code is modified based on code from http://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
 		# determine the (x, y)-coordinates of the intersection rectangle
 		# ipdb.set_trace()
+
+		corners_of_boxB=[(boxB[0],boxB[1]),(boxB[0],boxB[3]),(boxB[2],boxB[1]),(boxB[2],boxB[3])]
+		is_intersect =False
+		for corner in corners_of_boxB:
+			x=corner[0]
+			y=corner[1]
+			if x >= boxA[0] and x<=boxA[2] and y>=boxA[1] and y<=boxA[3]:
+				is_intersect = True
+				break
+		if not is_intersect:
+			return 0
 		xA = max(boxA[0], boxB[0])
 		yA = max(boxA[1], boxB[1])
 		xB = min(boxA[2], boxB[2])
@@ -15,6 +29,7 @@ def bb_intersection_over_union(boxA, boxB):
 	 
 		# compute the area of intersection rectangle
 		interArea = (xB - xA + 1) * (yB - yA + 1)
+		# ipdb.set_trace()
 	 
 		# compute the area of both the prediction and ground-truth
 		# rectangles
@@ -30,6 +45,7 @@ def bb_intersection_over_union(boxA, boxB):
 		return iou
 def index_of_largest_IOU(input_bbox,all_bbox):
 	max_iou=0
+	index  = -1
 	i_bbox=[input_bbox[0][0],input_bbox[0][1],input_bbox[1][0],input_bbox[1][1]]
 	for i,each_box in enumerate(all_bbox):
 		# ipdb.set_trace()
@@ -38,12 +54,12 @@ def index_of_largest_IOU(input_bbox,all_bbox):
 		if max_iou< iou:
 			max_iou=iou
 			index = i
-	return i
+	return index
 def bbox_to_4_scaler_list(bbox):
 	return [bbox[0][0],bbox[0][1],bbox[1][0],bbox[1][1]]
 def deform_bbox(bbox,x_size,y_size,dx1,dy1,dx2,dy2):
-	print('dx1={}  dx2={}'.format(dx1,dx2))
-	print('dy1={}  dy2={}'.format(dy1,dy2))
+	# print('dx1={}  dx2={}'.format(dx1,dx2))
+	# print('dy1={}  dy2={}'.format(dy1,dy2))
  	assert(abs(dx1)==abs(dx2))
  	assert(abs(dy1)==abs(dy2))
  	if bbox[0][0]+dx1 <0:
@@ -76,40 +92,69 @@ def warp_image(image, bbox):
 def relabel_disconnected_seglabel(seg_label):
  	unique_objs=np.unique(seg_label)
  	unique_objs=unique_objs[np.nonzero(unique_objs)] # remove label 0 --neuron boundary
- 	zero_image=np.zeros_like(seg_label)
-	all_box=env.all_bbox.values()
-	all_keys=env.all_bbox.keys()
+ 	unique_objs=np.sort(unique_objs)
+ 	
+	# all_box=env.all_bbox.values()
+	# all_labels=env.all_bbox.keys()
 		# idx=np.where(seg_label==all_keys[3])
-	for lb in all_keys:
+	max_lb=unique_objs[-1]+1
+	for lb in unique_objs:
+		zero_image=np.zeros_like(seg_label)
 		zero_image[seg_label==lb]=1
 		lbs=label(zero_image)
 		unum=np.unique(lbs)
-		if len(unum>2:
-			
- 	for each_seg_lb in unique_objs:
- 			# each_obj_idx=seg_label==each_seg_lb
- 		new_labels=label(seg_label)
- 		if len(new_label >2):
- 			seg_index = np.where(seg_label==each_seg_lb)
+		if len(unum)>2:
+			for l in unum[1:]:
+				seg_label[lbs==l]=max_lb
+				max_lb+=1
+	return seg_label
 
- 			# ipdb.set_trace()
- 		return obj_bbox
+
 
 
 class object_localization_env(object):
  	def __init__(self):
  		self.data_obj =None
- 		self.init_box_x_range = [200,300]
- 		self.init_box_y_range = [200,300]
+ 		self.init_box_x_range = [120,170]
+ 		self.init_box_y_range = [120,170]
  		self.cur_bbox =None
 		self.objective_bbox =None
-		self.action_alpha=0.2
+		self.action_alpha=0.05
 		self.previous_IOU = None
 		self.tal =  0.6
 		self.eta =  3.0 
+		self.fig,self.ax =plt.subplots(1)
  	def getName(self):
  		return 'base_env'
+ 	def show_step(self):
+ 		bbox=self.cur_bbox
+		image =self.transposed_image
+		# seg_label=env.seg_label
+		# zero_image=np.zeros_like(seg_label)
+		# all_box=env.all_bbox.values()
+		# zero_image[seg_label==486]=1
+		# cur_g=seg_label
+		# cur_g=zero_image
+		# label_rgb_im=label2rgb(cur_g)
+		# label_rgb_im=np.transpose(label_rgb_im,axes=[1,0,2])
+		# print (warp_x.shape)
+		# 
+		# image =np.transpose(image)
+		self.ax.clear()
+		self.ax.imshow(image,cmap='gray')
+		# ax.imshow(label_rgb_im,cmap='gray')
+		# ax=plt.imshow(image,cmap='gray')
+		ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
+		ppxy_o,w_o,h_o=conver_bbox_to_xy_width_height(self.objective_bbox)
+		move_rect = patches.Rectangle(ppxy,w,h,linewidth=3,edgecolor='w',facecolor='none')
+		obj_rect =  patches.Rectangle(ppxy_o,w_o,h_o,linewidth=2,edgecolor='g',facecolor='none')
+		self.ax.add_patch(move_rect)
+		self.ax.add_patch(obj_rect)
+		plt.draw()
+		# plt.show()
+		plt.pause(0.00001)
  	def localization_step(self,action):
+
  		if action != 8:
  			# ipdb.set_trace()
  			self.update_current_bbox_with_action(action)
@@ -118,9 +163,18 @@ class object_localization_env(object):
  		else:
  			# for trigger action
  			reward = self.eta \
- 			if bb_intersection_over_union(bbox_to_4_scaler_list(self.objective_bbox),bbox_to_4_scaler_list(self.cur_bbox)) > self.tal else -1*self.eta
- 		bbox_warp_image =self.get_cur_bbox_warp_image()
- 		terminal = True if action ==8 else False
+ 			if bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox)) > self.tal else -1*self.eta
+ 		bbox_warp_image =self.get_cur_bbox_warp_image().astype(int)
+ 		if action==8:
+ 			terminal = True
+ 			self.init_starting_box()
+ 		else:
+ 			terminal = False
+ 		self.step_counts+=1
+ 		if self.step_counts >20:
+ 			self.init_starting_box()
+ 			terminal = True
+ 		# self.show_step()
  		return bbox_warp_image,reward, terminal
  		# warp_image(image, bbox):
  	# def get_cur_bbox_warp_image():
@@ -128,7 +182,7 @@ class object_localization_env(object):
 
  	def get_reward(self):
  		cur_iou = bb_intersection_over_union(bbox_to_4_scaler_list(self.objective_bbox),bbox_to_4_scaler_list(self.cur_bbox))
- 		reward = 1 if cur_iou -self.previous_IOU else -1
+ 		reward = 1 if (cur_iou -self.previous_IOU)>0 else -1
  		self.previous_IOU =cur_iou
  		return reward
 
@@ -220,31 +274,44 @@ class neuron_object_env(object_localization_env):
 	def __init__(self):
 		super(neuron_object_env,self).__init__()
 		self.data_obj=RL_neuron_data()
+		self.read_one_image()
 		self.init_starting_box()
 	def getName(self):
 		return 'neuron_localization_env'
-	def init_starting_box(self):
-		slice_idx =10
+	def read_one_image(self):
+		slice_idx =50
 		image,seg_label,all_bbox  =	self.data_obj.get_image_with_boundingBox(slice_idx)
 		self.all_bbox	=	all_bbox
 		self.seg_label  =   seg_label
 		self.x_size 	=	image.shape[0]
 		self.y_size 	=	image.shape[1]
+		self.cur_image  =   image
+		self.transposed_image =np.transpose(image)
+	def get_random_start_bbox(self):
 		x_left 			=	random.randint(0,self.x_size-self.init_box_x_range[1])
 		x_right 		= 	x_left+random.randint(self.init_box_x_range[0], self.init_box_x_range[1])
 		y_top 			=	random.randint(0,self.y_size-self.init_box_y_range[1])
 		y_bottom 		= 	y_top+random.randint(self.init_box_y_range[0], self.init_box_y_range[1])
-		# ipdb.set_trace()
-		self.cur_image  =   image
 		self.cur_bbox 	=	[[x_left,y_top],[x_right,y_bottom]]
+
+	def init_starting_box(self):
+		
 		# ipdb.set_trace()
-		all_box_list = all_bbox.values()
-		self.objective_bbox =all_box_list[index_of_largest_IOU(self.cur_bbox,all_box_list)]
+		
+		self.step_counts =0
+		# ipdb.set_trace()
+		all_box_list = self.all_bbox.values()
+		all_box_keys = self.all_bbox.keys()
+		while True:
+			self.get_random_start_bbox()
+			idx=index_of_largest_IOU(self.cur_bbox,all_box_list)
+			if idx >-1:
+				break
+		self.objective_bbox =all_box_list[idx]
+		largest_lb=all_box_keys[idx]
 		# ipdb.set_trace()
 		self.previous_IOU   = bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),
 														bbox_to_4_scaler_list(self.objective_bbox))
-	# def localization_step(self,action):
-		# return 
 	def get_cur_bbox_warp_image(self):
 		return  warp_image(self.cur_image,self.cur_bbox)
 
@@ -269,9 +336,10 @@ class RL_neuron_data(RL_data):
 	def getName(self):
  		return 'neuron_data'
  	def get_image_with_boundingBox(self,slice_idx):
- 		image,seg_label=self.get_one_image(slice_idx)
- 		seg_label=seg_label.astype(int)
- 		bbox =self.get_bounding_box(seg_label)
+ 		image,seg_label=	self.get_one_image(slice_idx)
+ 		seg_label      =	seg_label.astype(int)
+ 		seg_label      =	relabel_disconnected_seglabel(seg_label) # connected in 3D but diconnected in 2D
+ 		bbox           =	self.get_bounding_box(seg_label)
  		return image,seg_label,bbox
  	def get_one_image(self,slice_idx):
  		image=self.images[:,:,slice_idx]
@@ -280,7 +348,6 @@ class RL_neuron_data(RL_data):
  	def get_bounding_box(self,seg_label):
  		obj_bbox={}
  		unique_objs=np.unique(seg_label)
- 		# ipdb.set_trace()
  		unique_objs=unique_objs[np.nonzero(unique_objs)] # remove label 0 --neuron boundary
  		for each_seg_lb in unique_objs:
  			# each_obj_idx=seg_label==each_seg_lb
@@ -300,6 +367,25 @@ def conver_bbox_to_xy_width_height(bbox):
 	width=bbox[1][0]-bbox[0][0]
 	height=bbox[1][1]-bbox[0][1]
 	return (x1,y1),width,height
+def test_iou():
+	bbox1=[2,2,4,4]
+	bbox2=[8,8,15,15]
+	iou=bb_intersection_over_union(bbox1,bbox2)
+	# ipdb.set_trace()
+	assert(iou<=0)
+
+	bbox1=[2,2,8,8]
+	bbox2=[6,6,15,15]
+	iou=bb_intersection_over_union(bbox1,bbox2)
+	# ipdb.set_trace()
+	assert(iou>0)
+
+	bbox1=[335,423,400,455]
+	bbox2=[113,220,404,430]
+	iou=bb_intersection_over_union(bbox1,bbox2)
+	# ipdb.set_trace()
+	assert(iou<=0)
+
 def test_env():
 	import matplotlib.pyplot as plt
 	import matplotlib.patches as patches
@@ -308,58 +394,52 @@ def test_env():
 
 
 	env = neuron_object_env()
-	fig,ax =plt.subplots(1)
-	for i in range(1):
-		action=random.randint(0,7)
+	fig,ax =plt.subplots(2)
+	# fig2,ax2 =plt.subplots(1)
+	action_discription={0:'left',1:'right',2:'up',3:'bottom',4:'bigger',5:'smaller',6:'fatter',7:'toller',8:'triger'}
+	for i in range(50):
+		action=random.randint(0,8)
 		warp_x, reward, terminal=env.localization_step(action)
+		print('Action = {}'.format(action_discription[action]))
 		bbox=env.cur_bbox
 		image =env.cur_image
 		seg_label=env.seg_label
 		zero_image=np.zeros_like(seg_label)
 		all_box=env.all_bbox.values()
-		all_keys=env.all_bbox.keys()
-		# idx=np.where(seg_label==all_keys[3])
-		zero_image[seg_label==all_keys[4]]=1
-		# zero_image[idx]=1
-		cur_g=zero_image
-		lbs=label(cur_g)
-		unum=np.unique(lbs)
-		ipdb.set_trace()
-		if unum >1:
-			connected =True
-		else:
-			connected =False
-		ipdb.set_trace()
-		# label_rgb_im=label2rgb(seg_label)
+		zero_image[seg_label==486]=1
+		cur_g=seg_label
+		# cur_g=zero_image
 		label_rgb_im=label2rgb(cur_g)
-		ipdb.set_trace()
 		label_rgb_im=np.transpose(label_rgb_im,axes=[1,0,2])
-		print (warp_x.shape)
+		# print (warp_x.shape)
 		# 
-		ax.clear()
-		# ax.imshow(image,cmap='gray')
-		ax.imshow(label_rgb_im,cmap='gray')
+		warp_x=np.transpose(warp_x)
+		image =np.transpose(image)
+		ax[0].clear()
+		ax[0].imshow(image,cmap='gray')
+		# ipdb.set_trace()
+		ax[1].clear()
+		ax[1].imshow(warp_x,cmap='gray')
+		# ax.imshow(label_rgb_im,cmap='gray')
 		# ax=plt.imshow(image,cmap='gray')
 		ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
 		ppxy_o,w_o,h_o=conver_bbox_to_xy_width_height(env.objective_bbox)
-		move_rect = patches.Rectangle(ppxy,w,h,linewidth=1,edgecolor='r',facecolor='none')
+		move_rect = patches.Rectangle(ppxy,w,h,linewidth=3,edgecolor='w',facecolor='none')
 		obj_rect =  patches.Rectangle(ppxy_o,w_o,h_o,linewidth=2,edgecolor='g',facecolor='none')
-		ax.add_patch(move_rect)
-		ax.add_patch(obj_rect)
-		for bbox in all_box[3:4]:
+		ax[0].add_patch(move_rect)
+		ax[0].add_patch(obj_rect)
+		for bbox in all_box[0:50]:
 			ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
 			each_rect = patches.Rectangle(ppxy,w,h,linewidth=1,edgecolor='w',facecolor='none')
-			ax.add_patch(each_rect)
+			ax[0].add_patch(each_rect)
 
-		plt.show()
-		plt.pause(0.1)
-
+		plt.draw()
+		# plt.show()
+		plt.pause(0.05)
 
 if __name__ == "__main__":
-	 test_env()
-	# test class and functions:
-	
-		# fig.clf()
+	# test_iou()
+	test_env()
 
 
 
