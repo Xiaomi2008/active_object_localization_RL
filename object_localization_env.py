@@ -3,7 +3,7 @@ import numpy as np
 import random
 import os.path
 import ipdb
-
+from skimage.measure import label
 def bb_intersection_over_union(boxA, boxB):
  		# code from http://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
 		# determine the (x, y)-coordinates of the intersection rectangle
@@ -72,6 +72,29 @@ def warp_image(image, bbox):
 	assert(bbox[1][1]<y_size)
 	warp_im = image[bbox[0][0]:bbox[1][0],bbox[0][1]:bbox[1][1]]
 	return warp_im
+
+def relabel_disconnected_seglabel(seg_label):
+ 	unique_objs=np.unique(seg_label)
+ 	unique_objs=unique_objs[np.nonzero(unique_objs)] # remove label 0 --neuron boundary
+ 	zero_image=np.zeros_like(seg_label)
+	all_box=env.all_bbox.values()
+	all_keys=env.all_bbox.keys()
+		# idx=np.where(seg_label==all_keys[3])
+	for lb in all_keys:
+		zero_image[seg_label==lb]=1
+		lbs=label(zero_image)
+		unum=np.unique(lbs)
+		if len(unum>2:
+			
+ 	for each_seg_lb in unique_objs:
+ 			# each_obj_idx=seg_label==each_seg_lb
+ 		new_labels=label(seg_label)
+ 		if len(new_label >2):
+ 			seg_index = np.where(seg_label==each_seg_lb)
+
+ 			# ipdb.set_trace()
+ 		return obj_bbox
+
 
 class object_localization_env(object):
  	def __init__(self):
@@ -201,19 +224,22 @@ class neuron_object_env(object_localization_env):
 	def getName(self):
 		return 'neuron_localization_env'
 	def init_starting_box(self):
-		slice_idx =2
-		image,all_bbox  =	self.data_obj.get_image_with_boundingBox(slice_idx)
+		slice_idx =10
+		image,seg_label,all_bbox  =	self.data_obj.get_image_with_boundingBox(slice_idx)
+		self.all_bbox	=	all_bbox
+		self.seg_label  =   seg_label
 		self.x_size 	=	image.shape[0]
 		self.y_size 	=	image.shape[1]
 		x_left 			=	random.randint(0,self.x_size-self.init_box_x_range[1])
 		x_right 		= 	x_left+random.randint(self.init_box_x_range[0], self.init_box_x_range[1])
 		y_top 			=	random.randint(0,self.y_size-self.init_box_y_range[1])
 		y_bottom 		= 	y_top+random.randint(self.init_box_y_range[0], self.init_box_y_range[1])
-		ipdb.set_trace()
+		# ipdb.set_trace()
 		self.cur_image  =   image
 		self.cur_bbox 	=	[[x_left,y_top],[x_right,y_bottom]]
-		ipdb.set_trace()
-		self.objective_bbox =all_bbox[index_of_largest_IOU(self.cur_bbox,all_bbox)]
+		# ipdb.set_trace()
+		all_box_list = all_bbox.values()
+		self.objective_bbox =all_box_list[index_of_largest_IOU(self.cur_bbox,all_box_list)]
 		# ipdb.set_trace()
 		self.previous_IOU   = bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),
 														bbox_to_4_scaler_list(self.objective_bbox))
@@ -244,25 +270,29 @@ class RL_neuron_data(RL_data):
  		return 'neuron_data'
  	def get_image_with_boundingBox(self,slice_idx):
  		image,seg_label=self.get_one_image(slice_idx)
+ 		seg_label=seg_label.astype(int)
  		bbox =self.get_bounding_box(seg_label)
- 		return image,bbox
+ 		return image,seg_label,bbox
  	def get_one_image(self,slice_idx):
  		image=self.images[:,:,slice_idx]
  		seg_label=self.seg_labels[:,:,slice_idx]
  		return image, seg_label
  	def get_bounding_box(self,seg_label):
- 		obj_bbox=[]
+ 		obj_bbox={}
  		unique_objs=np.unique(seg_label)
  		# ipdb.set_trace()
  		unique_objs=unique_objs[np.nonzero(unique_objs)] # remove label 0 --neuron boundary
  		for each_seg_lb in unique_objs:
  			# each_obj_idx=seg_label==each_seg_lb
  			seg_index = np.where(seg_label==each_seg_lb)
+ 			
  			left  	= min(seg_index[0])
  			right 	= max(seg_index[0])
  			top   	= min(seg_index[1])
  			bottom 	= max(seg_index[1])
- 			obj_bbox.append([(left,top),(right,bottom)])
+ 			# obj_bbox.append([(left,top),(right,bottom)])
+ 			obj_bbox[each_seg_lb]=([(left,top),(right,bottom)])
+ 			# ipdb.set_trace()
  		return obj_bbox
 def conver_bbox_to_xy_width_height(bbox):
 	x1=bbox[0][0]
@@ -270,22 +300,45 @@ def conver_bbox_to_xy_width_height(bbox):
 	width=bbox[1][0]-bbox[0][0]
 	height=bbox[1][1]-bbox[0][1]
 	return (x1,y1),width,height
-
-if __name__ == "__main__":
-	# test class and functions:
+def test_env():
 	import matplotlib.pyplot as plt
 	import matplotlib.patches as patches
+	from skimage.color.colorlabel import label2rgb
+	
+
+
 	env = neuron_object_env()
 	fig,ax =plt.subplots(1)
-	for i in range(100):
+	for i in range(1):
 		action=random.randint(0,7)
 		warp_x, reward, terminal=env.localization_step(action)
 		bbox=env.cur_bbox
 		image =env.cur_image
+		seg_label=env.seg_label
+		zero_image=np.zeros_like(seg_label)
+		all_box=env.all_bbox.values()
+		all_keys=env.all_bbox.keys()
+		# idx=np.where(seg_label==all_keys[3])
+		zero_image[seg_label==all_keys[4]]=1
+		# zero_image[idx]=1
+		cur_g=zero_image
+		lbs=label(cur_g)
+		unum=np.unique(lbs)
+		ipdb.set_trace()
+		if unum >1:
+			connected =True
+		else:
+			connected =False
+		ipdb.set_trace()
+		# label_rgb_im=label2rgb(seg_label)
+		label_rgb_im=label2rgb(cur_g)
+		ipdb.set_trace()
+		label_rgb_im=np.transpose(label_rgb_im,axes=[1,0,2])
 		print (warp_x.shape)
 		# 
 		ax.clear()
-		ax.imshow(image,cmap='gray')
+		# ax.imshow(image,cmap='gray')
+		ax.imshow(label_rgb_im,cmap='gray')
 		# ax=plt.imshow(image,cmap='gray')
 		ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
 		ppxy_o,w_o,h_o=conver_bbox_to_xy_width_height(env.objective_bbox)
@@ -293,8 +346,19 @@ if __name__ == "__main__":
 		obj_rect =  patches.Rectangle(ppxy_o,w_o,h_o,linewidth=2,edgecolor='g',facecolor='none')
 		ax.add_patch(move_rect)
 		ax.add_patch(obj_rect)
-		plt.draw()
+		for bbox in all_box[3:4]:
+			ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
+			each_rect = patches.Rectangle(ppxy,w,h,linewidth=1,edgecolor='w',facecolor='none')
+			ax.add_patch(each_rect)
+
+		plt.show()
 		plt.pause(0.1)
+
+
+if __name__ == "__main__":
+	 test_env()
+	# test class and functions:
+	
 		# fig.clf()
 
 
