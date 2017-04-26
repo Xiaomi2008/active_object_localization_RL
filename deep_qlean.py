@@ -37,21 +37,35 @@ GAMMA = 0.99 # decay rate of past observations
 OBSERVATION = 3000. # timesteps to observe before training
 EXPLORE = 3000000. # frames over which to anneal epsilon
 FINAL_EPSILON = 0.0001 # final value of epsilon
-INITIAL_EPSILON = 0.3 # starting value of epsilon
+INITIAL_EPSILON = 0.18 # starting value of epsilon
 REPLAY_MEMORY = 50000 # number of previous transitions to remember
 BATCH = 32 # size of minibatch
 FRAME_PER_ACTION = 1
 LEARNING_RATE = 1e-5
-
-img_rows , img_cols = 80, 80
+ACTION_ALPHA  = 0.15
+action_discription={0:'left',1:'right',2:'up',3:'bottom',4:'bigger',5:'smaller',6:'fatter',7:'toller',8:'triger'}
+netwrok_model={}
+netwrok_model['res_vgg_model']=deepmodel.res_vgg_model
 #Convert image into Black and white
 img_channels = 1
-
+def get_model_file(args):
+    print(args)
+    file_name =args.cnn_model+'_'+args.data+'_netinput_size'+str(args.cnn_input_size)+ '_act_alpha-'+str(ACTION_ALPHA)+'.h5'
 def trainNetwork(model,args):
     # open up a game state to communicate with emulator
     # game_state = game.GameState()
-    object_loc_env=neuron_object_env()
+    img_rows =img_cols = args.cnn_input_size
+    print(img_rows)
+    ipdb.set_trace()
+    if args.data =='neuron':
+        object_loc_env=neuron_object_env()
+    elif args.data =='nature':
+        object_loc_env=nature_object_env()
+    else:
+        raise NameError(args.data  + ' :  No such env !' )
+    object_loc_env.action_alpha=ACTION_ALPHA
 
+    model_file =get_model_file(args)
     # store the previous observations in replay memory
     D =deque()
 
@@ -79,18 +93,24 @@ def trainNetwork(model,args):
 
     
 
-    if args['mode'] == 'Run':
+    if args.mode == 'Run':
         OBSERVE = 999999999    #We keep observe, never train
         epsilon = FINAL_EPSILON
         print ("Now we load weight")
-        model.load_weights("model.h5")
+        # model.load_weights("model.h5")
+        model.load_weights(model_file)
         adam = Adam(lr=LEARNING_RATE)
         model.compile(loss='mse',optimizer=adam)
         print ("Weight load successfully")    
     else:                       #We go to training mode
         OBSERVE = OBSERVATION
         epsilon = INITIAL_EPSILON
-        model.load_weights("model.h5")
+        try:
+            model.load_weights(model_file)
+        except:
+            print('can not find saved model file . {}'.format(model_file))
+            pass
+        # model.load_weights("model.h5")
 
     t = 0
     
@@ -121,7 +141,7 @@ def trainNetwork(model,args):
         x_t1, r_t, terminal = object_loc_env.localization_step(action_index)
 
         # x_t1 = skimage.color.rgb2gray(x_t1_colored)
-        x_t1 = skimage.transform.resize(x_t1,(80,80))
+        x_t1 = skimage.transform.resize(x_t1,(img_rows,img_rows))
         x_t1 = skimage.exposure.rescale_intensity(x_t1, out_range=(0, 255))
 
         x_t1 = x_t1.reshape(1, x_t1.shape[0], x_t1.shape[1], 1) #1x80x80x1
@@ -143,7 +163,7 @@ def trainNetwork(model,args):
 
         #only train if done observing
         if t > OBSERVE:
-            object_loc_env.show_step()
+            # object_loc_env.show_step()
             #sample a minibatch to train on
             minibatch = random.sample(D, BATCH)
             # ipdb.set_trace()
@@ -182,8 +202,10 @@ def trainNetwork(model,args):
         # save progress every 10000 iterations
         if t % 4000 == 0:
             print("Now we save model")
-            model.save_weights("model.h5", overwrite=True)
-            with open("model.json", "w") as outfile:
+            # model.save_weights("model.h5", overwrite=True)
+            # model.save_weights(model_file, overwrite=True)
+            # with open("model.json", "w") as outfile:
+            with open(model_file[:-4]+'.json',"w") as outfile:
                 json.dump(model.to_json(), outfile)
 
         # print info
@@ -203,12 +225,15 @@ def trainNetwork(model,args):
     print("************************")
 
 def start(args):
-    # model = buildmodel()
-    # model =vgg_model()
+    print(args)
+    img_rows =args.cnn_input_size
+    img_cols  = img_rows
+    img_channels =3 if args.data =='nature' else 1
     input_shape=(img_rows,img_cols,img_channels)
-    action_shape =(9*10,)
+    action_history_shape =(9*10,)
     output_shape =(ACTIONS,)
-    ips,out =deepmodel.vgg_model(input_shape, action_shape,output_shape)
+    # ips,out =deepmodel.res_vgg_model(input_shape, action_history_shape,output_shape)
+    ips,out=netwrok_model[args.cnn_model](input_shape, action_history_shape,output_shape)
     model=Model(ips,out)
     adam = Adam(lr=LEARNING_RATE)
     model.compile(loss='mse',optimizer=adam)
@@ -217,9 +242,13 @@ def start(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Description of your program')
+    parser = argparse.ArgumentParser(description='object detection ')
     parser.add_argument('-m','--mode', help='Train / Run', required=True)
-    args = vars(parser.parse_args())
+    parser.add_argument('-d','--data',help='neuron/nature',default='neuron')
+    parser.add_argument('-s','--cnn_input_size',help='network input size',type=int,default=80)
+    parser.add_argument('-c','--cnn_model',help='deep q-net model',default='res_vgg_model')
+    args = parser.parse_args()
+    print(args)
     start(args)
 
 if __name__ == "__main__":

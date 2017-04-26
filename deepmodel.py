@@ -17,7 +17,7 @@ from keras.layers.normalization import BatchNormalization
 from keras.models import Sequential
 ACTIONS =9
 
-def vgg_model(input_shape_1,input_shape_2,output_shape):
+def res_vgg_model(input_shape_1,input_shape_2,output_shape):
 	ip1 = Input(shape=input_shape_1,name = 'warp_image')
 	ip2=  Input(shape=input_shape_2,name = 'action_history')
 	conv1_1=Convolution2D(48, (3, 3), activation='relu', padding='same')(ip1)
