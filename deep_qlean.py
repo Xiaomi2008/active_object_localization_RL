@@ -20,89 +20,32 @@ from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2
 from keras.optimizers import SGD , Adam
 
 from object_localization_env import nature_object_env, neuron_object_env
+import deepmodel
 import ipdb
+from keras.layers import Input
+from keras.callbacks  import CSVLogger, ModelCheckpoint, TensorBoard, EarlyStopping
+from keras.models import Model
+from keras import backend as K
+from keras.optimizers import RMSprop, SGD,Adam
+import matplotlib.pyplot as plt
+from keras import metrics
+from keras import losses
 
 CONFIG = 'nothreshold'
 ACTIONS = 9 # number of valid actions
 GAMMA = 0.99 # decay rate of past observations
-OBSERVATION = 3200. # timesteps to observe before training
+OBSERVATION = 3000. # timesteps to observe before training
 EXPLORE = 3000000. # frames over which to anneal epsilon
 FINAL_EPSILON = 0.0001 # final value of epsilon
-INITIAL_EPSILON = 0.1 # starting value of epsilon
+INITIAL_EPSILON = 0.3 # starting value of epsilon
 REPLAY_MEMORY = 50000 # number of previous transitions to remember
 BATCH = 32 # size of minibatch
 FRAME_PER_ACTION = 1
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-5
 
 img_rows , img_cols = 80, 80
 #Convert image into Black and white
 img_channels = 1
-def vgg_model():
-    vgg16_model = Sequential()
-    vgg16_model.add(ZeroPadding2D((1, 1), input_shape=(img_rows,img_cols,img_channels)))
-    vgg16_model.add(Convolution2D(64, 3, 3, activation='relu'))
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(64, 3, 3, activation='relu'))
-    vgg16_model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(128, 3, 3, activation='relu'))
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(128, 3, 3, activation='relu'))
-    vgg16_model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(256, 3, 3, activation='relu'))
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(256, 3, 3, activation='relu'))
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(256, 3, 3, activation='relu'))
-    vgg16_model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(512, 3, 3, activation='relu'))
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(512, 3, 3, activation='relu'))
-    vgg16_model.add(ZeroPadding2D((1, 1)))
-    vgg16_model.add(Convolution2D(512, 3, 3, activation='relu'))
-    # vgg16_model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    # vgg16_model.add(ZeroPadding2D((1, 1)))
-    # vgg16_model.add(Convolution2D(512, 3, 3, activation='relu'))
-    # vgg16_model.add(ZeroPadding2D((1, 1)))
-    # vgg16_model.add(Convolution2D(512, 3, 3, activation='relu'))
-    # vgg16_model.add(ZeroPadding2D((1, 1)))
-    # vgg16_model.add(Convolution2D(512, 3, 3, activation='relu'))
-    # vgg16_model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    vgg16_model.add(Flatten())
-    vgg16_model.add(Dense(4096, activation='relu'))
-    vgg16_model.add(Dropout(0.5))
-    vgg16_model.add(Dense(4096, activation='relu'))
-    vgg16_model.add(Dropout(0.5))
-    vgg16_model.add(Dense(ACTIONS))
-    adam = Adam(lr=LEARNING_RATE)
-    vgg16_model.compile(loss='mse',optimizer=adam)
-    print("We finish building the model")
-    return vgg16_model
-def buildmodel():
-    print("Now we build the model")
-    model = Sequential()
-    model.add(Convolution2D(32, 8, 8, subsample=(4, 4), border_mode='same',input_shape=(img_rows,img_cols,img_channels)))  #80*80*4
-    model.add(Activation('relu'))
-    model.add(Convolution2D(64, 4, 4, subsample=(2, 2), border_mode='same'))
-    model.add(Activation('relu'))
-    model.add(Convolution2D(64, 3, 3, subsample=(1, 1), border_mode='same'))
-    model.add(Activation('relu'))
-    model.add(Flatten())
-    model.add(Dense(512))
-    model.add(Activation('relu'))
-    model.add(Dense(ACTIONS))
-   
-    adam = Adam(lr=LEARNING_RATE)
-    model.compile(loss='mse',optimizer=adam)
-    print("We finish building the model")
-    return model
 
 def trainNetwork(model,args):
     # open up a game state to communicate with emulator
@@ -122,12 +65,17 @@ def trainNetwork(model,args):
     x_t = skimage.transform.resize(x_t,(img_rows,img_rows))
     x_t = skimage.exposure.rescale_intensity(x_t,out_range=(0,255))
     s_t=x_t
+    action_history_st =[np.zeros([ACTIONS]) for i in range(10)]
+    action_history_st_1 =[np.zeros([ACTIONS]) for i in range(10)]
 
     # s_t = np.stack((x_t, x_t, x_t, x_t), axis=2)
     #print (s_t.shape)
 
     #In Keras, need to reshape
     s_t = s_t.reshape(1, s_t.shape[0], s_t.shape[1], 1)  #1*80*80*1
+    s_at=np.array(action_history_st)
+    s_at=np.reshape(s_at,(1,-1))
+    S_Ts=[s_t,s_at]
 
     
 
@@ -145,6 +93,7 @@ def trainNetwork(model,args):
         model.load_weights("model.h5")
 
     t = 0
+    
     while (True):
         loss = 0
         Q_sa = 0
@@ -156,21 +105,20 @@ def trainNetwork(model,args):
             if random.random() <= epsilon:
                 print("----------Random Action----------")
                 action_index = random.randrange(ACTIONS)
-                # a_t[action_index] = 1
-                a_t= action_index
+                a_t[action_index] = 1
             else:
-                q = model.predict(s_t)       #input a stack of 4 images, get the prediction
+                # q = model.predict(s_t)       #input a stack of 4 images, get the prediction
+                q= model.predict(S_Ts)
                 max_Q = np.argmax(q)
                 action_index = max_Q
-                # a_t[max_Q] = 1
-                a_t= action_index
-
+                a_t[max_Q] = 1
+                # a_t= action_index
         #We reduced the epsilon gradually
         if epsilon > FINAL_EPSILON and t > OBSERVE:
             epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
 
         #run the selected action and observed next state and reward
-        x_t1, r_t, terminal = object_loc_env.localization_step(a_t)
+        x_t1, r_t, terminal = object_loc_env.localization_step(action_index)
 
         # x_t1 = skimage.color.rgb2gray(x_t1_colored)
         x_t1 = skimage.transform.resize(x_t1,(80,80))
@@ -178,10 +126,18 @@ def trainNetwork(model,args):
 
         x_t1 = x_t1.reshape(1, x_t1.shape[0], x_t1.shape[1], 1) #1x80x80x1
         s_t1=x_t1
+        
         # s_t1 = np.append(x_t1, s_t[:, :, :, :3], axis=3)
 
         # store the transition in D
-        D.append((s_t, action_index, r_t, s_t1, terminal))
+        s_at1=np.array(action_history_st_1)
+        s_at1=np.reshape(s_at1,(1,-1))
+        S_Ts1=[s_t1,s_at1]
+        D.append((S_Ts, action_index, r_t, S_Ts1,terminal))
+        # D.append((s_t, action_index, r_t, s_t1, terminal))
+        action_history_st.pop(0)
+        action_history_st.append(a_t)
+
         if len(D) > REPLAY_MEMORY:
             D.popleft()
 
@@ -190,12 +146,11 @@ def trainNetwork(model,args):
             object_loc_env.show_step()
             #sample a minibatch to train on
             minibatch = random.sample(D, BATCH)
-
-
-
-            inputs = np.zeros((BATCH, s_t.shape[1], s_t.shape[2], 1))   #32, 80, 80, 1
-            print (inputs.shape)
-            targets = np.zeros((inputs.shape[0], ACTIONS))                         #32, 2
+            # ipdb.set_trace()
+            inputs = [np.zeros((BATCH, s_t.shape[1], s_t.shape[2], 1)),\
+                        np.zeros((BATCH, s_at1.shape[1]))]   #32, 80, 80, 1
+            # print (inputs.shape)
+            targets = np.zeros((inputs[0].shape[0], ACTIONS))                         #32, 9
 
             #Now we do the experience replay
             for i in range(0, len(minibatch)):
@@ -206,9 +161,10 @@ def trainNetwork(model,args):
                 terminal = minibatch[i][4]
                 # if terminated, only equals reward
 
-                inputs[i:i + 1] = state_t    #I saved down s_t
+                inputs[0][i:i + 1] = state_t[0]    #I saved down s_t
+                inputs[1][i:i + 1] = state_t[1]
 
-                targets[i] = model.predict(state_t)  # Hitting each buttom probability
+                targets[i] = model.predict(state_t)   # Hitting each buttom probability
                 Q_sa = model.predict(state_t1)
 
                 if terminal:
@@ -220,6 +176,7 @@ def trainNetwork(model,args):
             loss += model.train_on_batch(inputs, targets)
 
         s_t = s_t1
+        S_Ts = S_Ts1
         t = t + 1
 
         # save progress every 10000 iterations
@@ -247,8 +204,17 @@ def trainNetwork(model,args):
 
 def start(args):
     # model = buildmodel()
-    model =vgg_model()
+    # model =vgg_model()
+    input_shape=(img_rows,img_cols,img_channels)
+    action_shape =(9*10,)
+    output_shape =(ACTIONS,)
+    ips,out =deepmodel.vgg_model(input_shape, action_shape,output_shape)
+    model=Model(ips,out)
+    adam = Adam(lr=LEARNING_RATE)
+    model.compile(loss='mse',optimizer=adam)
+    model.summary()
     trainNetwork(model,args)
+
 
 def main():
     parser = argparse.ArgumentParser(description='Description of your program')

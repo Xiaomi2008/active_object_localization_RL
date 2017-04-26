@@ -7,20 +7,26 @@ from skimage.measure import label
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from skimage.color.colorlabel import label2rgb
+def check_cornerInbox(source_box,target_box):
+	boxB= source_box
+	boxA=target_box
+	corners_of_boxB=[(boxB[0],boxB[1]),(boxB[0],boxB[3]),(boxB[2],boxB[1]),(boxB[2],boxB[3])]
+	is_intersect =False
+	for corner in corners_of_boxB:
+		x=corner[0]
+		y=corner[1]
+		if x >= boxA[0] and x<=boxA[2] and y>=boxA[1] and y<=boxA[3]:
+			is_intersect = True
+			break
+	return is_intersect
+
+
 def bb_intersection_over_union(boxA, boxB):
  		# This function code is modified based on code from http://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
 		# determine the (x, y)-coordinates of the intersection rectangle
 		# ipdb.set_trace()
 
-		corners_of_boxB=[(boxB[0],boxB[1]),(boxB[0],boxB[3]),(boxB[2],boxB[1]),(boxB[2],boxB[3])]
-		is_intersect =False
-		for corner in corners_of_boxB:
-			x=corner[0]
-			y=corner[1]
-			if x >= boxA[0] and x<=boxA[2] and y>=boxA[1] and y<=boxA[3]:
-				is_intersect = True
-				break
-		if not is_intersect:
+		if not (check_cornerInbox(boxA,boxB) or check_cornerInbox(boxB,boxA)):
 			return 0
 		xA = max(boxA[0], boxB[0])
 		yA = max(boxA[1], boxB[1])
@@ -39,7 +45,8 @@ def bb_intersection_over_union(boxA, boxB):
 		# compute the intersection over union by taking the intersection
 		# area and dividing it by the sum of prediction + ground-truth
 		# areas - the interesection area
-		iou = interArea / float(boxAArea + boxBArea - interArea)
+		# iou = interArea / float(boxAArea + boxBArea - interArea)
+		iou = interArea / float(boxAArea + boxBArea )
 	 
 		# return the intersection over union value
 		return iou
@@ -115,11 +122,11 @@ def relabel_disconnected_seglabel(seg_label):
 class object_localization_env(object):
  	def __init__(self):
  		self.data_obj =None
- 		self.init_box_x_range = [120,170]
- 		self.init_box_y_range = [120,170]
+ 		self.init_box_x_range = [45,85]
+ 		self.init_box_y_range = [45,85]
  		self.cur_bbox =None
 		self.objective_bbox =None
-		self.action_alpha=0.05
+		self.action_alpha=0.15
 		self.previous_IOU = None
 		self.tal =  0.6
 		self.eta =  3.0 
@@ -154,37 +161,34 @@ class object_localization_env(object):
 		# plt.show()
 		plt.pause(0.00001)
  	def localization_step(self,action):
+ 		self.step_counts+=1
 
  		if action != 8:
  			# ipdb.set_trace()
  			self.update_current_bbox_with_action(action)
+ 			# iou_with_objective =bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox))
  			# ipdb.set_trace()
- 			reward = self.get_reward()
+ 			reward,iou_with_objective = self.get_reward()
  		else:
  			# for trigger action
- 			reward = self.eta \
- 			if bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox)) > self.tal else -1*self.eta
- 		bbox_warp_image =self.get_cur_bbox_warp_image().astype(int)
- 		if action==8:
+ 			iou_with_objective =bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox))
+ 			reward = self.eta if  iou_with_objective > self.tal else -1*self.eta
+ 
+ 		if action==8 or iou_with_objective ==0 or self.step_counts >60:
  			terminal = True
  			self.init_starting_box()
  		else:
  			terminal = False
- 		self.step_counts+=1
- 		if self.step_counts >20:
- 			self.init_starting_box()
- 			terminal = True
- 		# self.show_step()
+ 		if iou_with_objective ==0:
+ 			print('terminated loc as IOU ==0')
+ 		bbox_warp_image =self.get_cur_bbox_warp_image()#.astype(int)
  		return bbox_warp_image,reward, terminal
- 		# warp_image(image, bbox):
- 	# def get_cur_bbox_warp_image():
- 	# 	pass
-
+ 
  	def get_reward(self):
  		cur_iou = bb_intersection_over_union(bbox_to_4_scaler_list(self.objective_bbox),bbox_to_4_scaler_list(self.cur_bbox))
  		reward = 1 if (cur_iou -self.previous_IOU)>0 else -1
  		self.previous_IOU =cur_iou
- 		return reward
+ 		return reward,cur_iou
 
  	def update_current_bbox_with_action(self,action):
  		alpha_w = int(round(self.action_alpha *(self.cur_bbox[1][0]-self.cur_bbox[0][0])))
@@ -281,6 +285,7 @@ class neuron_object_env(object_localization_env):
 	def read_one_image(self):
 		slice_idx =50
 		image,seg_label,all_bbox  =	self.data_obj.get_image_with_boundingBox(slice_idx)
+		# ipdb.set_trace()
 		self.all_bbox	=	all_bbox
 		self.seg_label  =   seg_label
 		self.x_size 	=	image.shape[0]
@@ -293,6 +298,15 @@ class neuron_object_env(object_localization_env):
 		y_top 			=	random.randint(0,self.y_size-self.init_box_y_range[1])
 		y_bottom 		= 	y_top+random.randint(self.init_box_y_range[0], self.init_box_y_range[1])
 		self.cur_bbox 	=	[[x_left,y_top],[x_right,y_bottom]]
+	def find_center_label(self,bbox):
+		cent_x= int(round(bbox[0] + (bbox[2]-bbox[0])/2.0))
+		cent_y= int(round(bbox[1] + (bbox[3]-bbox[1])/2.0))
+		lb=self.seg_label[cent_x,cent_y]
+		while lb==0:
+			n_x= cent_x+random.randrange(-15,15)
+			n_y= cent_y+random.randrange(-15,15)
+			lb=self.seg_label[n_x,n_y]
+		return lb
 
 	def init_starting_box(self):
 		
@@ -302,13 +316,16 @@ class neuron_object_env(object_localization_env):
 		# ipdb.set_trace()
 		all_box_list = self.all_bbox.values()
 		all_box_keys = self.all_bbox.keys()
-		while True:
-			self.get_random_start_bbox()
-			idx=index_of_largest_IOU(self.cur_bbox,all_box_list)
-			if idx >-1:
-				break
-		self.objective_bbox =all_box_list[idx]
-		largest_lb=all_box_keys[idx]
+		self.get_random_start_bbox()
+		lb=self.find_center_label(bbox_to_4_scaler_list(self.cur_bbox))
+		self.objective_bbox =self.all_bbox[lb]
+		# while True:
+		# 	self.get_random_start_bbox()
+		# 	idx=index_of_largest_IOU(self.cur_bbox,all_box_list)
+		# 	if idx >-1:
+		# 		break
+		# self.objective_bbox =all_box_list[idx]
+		# largest_lb=all_box_keys[idx]
 		# ipdb.set_trace()
 		self.previous_IOU   = bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),
 														bbox_to_4_scaler_list(self.objective_bbox))
@@ -326,7 +343,8 @@ class RL_data(object):
 class RL_neuron_data(RL_data):
 	def __init__(self):
 		super(RL_neuron_data,self).__init__()
-		self.data_file='./data/snemi3d_train_full_stacks_added_segLabel_v1.h5'
+		self.data_file='./data/snemi3d_train_full_stacks_added_segLabel_v1_scaled.h5'
+
 		h5f=h5py.File(self.data_file,'r')
 		self.images=h5f['data']
 		self.seg_labels=h5f['seg_label']
@@ -415,12 +433,14 @@ def test_env():
 		# 
 		warp_x=np.transpose(warp_x)
 		image =np.transpose(image)
+		# ipdb.set_trace()
 		ax[0].clear()
-		ax[0].imshow(image,cmap='gray')
+		ax[0].imshow(label_rgb_im,cmap='gray')
+		# ax[0].imshow(image,cmap='gray')
 		# ipdb.set_trace()
 		ax[1].clear()
 		ax[1].imshow(warp_x,cmap='gray')
-		# ax.imshow(label_rgb_im,cmap='gray')
+		
 		# ax=plt.imshow(image,cmap='gray')
 		ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
 		ppxy_o,w_o,h_o=conver_bbox_to_xy_width_height(env.objective_bbox)
