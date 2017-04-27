@@ -171,7 +171,7 @@ def trainNetwork(model,args):
             minibatch = random.sample(D, BATCH)
             # ipdb.set_trace()
             # channels = 1 if len(s_t.shape) <=2 else s_t.shape[2]
-            inputs = [np.zeros((BATCH, s_t.shape[1], s_t.shape[2], s_t.shape[2])),\
+            inputs = [np.zeros((BATCH, s_t.shape[1], s_t.shape[2], s_t.shape[3])),\
                         np.zeros((BATCH, s_at1.shape[1]))]   #32, 80, 80, 1
             # print (inputs.shape)
             targets = np.zeros((inputs[0].shape[0], ACTIONS))                         #32, 9
