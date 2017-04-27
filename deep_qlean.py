@@ -204,7 +204,7 @@ def trainNetwork(model,args):
         t = t + 1
 
         # save progress every 10000 iterations
-        if t % 3000 == 0:
+        if t % 4000 == 0:
             print("Now we save model")
             # model.save_weights("model.h5", overwrite=True)
             # ipdb.set_trace()
