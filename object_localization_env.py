@@ -7,6 +7,8 @@ from skimage.measure import label
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from skimage.color.colorlabel import label2rgb
+import skimage as skimage
+from skimage import transform, color, exposure
 def check_cornerInbox(source_box,target_box):
 	boxB= source_box
 	boxA=target_box
@@ -120,7 +122,7 @@ def relabel_disconnected_seglabel(seg_label):
 
 
 class object_localization_env(object):
- 	def __init__(self):
+ 	def __init__(self,warp_multi_images=False):
  		self.data_obj =None
  		self.init_box_x_range = [45,85]
  		self.init_box_y_range = [45,85]
@@ -131,6 +133,7 @@ class object_localization_env(object):
 		self.tal =  0.6
 		self.eta =  3.0 
 		self.fig,self.ax =plt.subplots(1)
+		self.warp_multi_images=warp_multi_images
  	def getName(self):
  		return 'base_env'
  	def show_step(self):
@@ -182,6 +185,16 @@ class object_localization_env(object):
  		if iou_with_objective ==0:
  			print('terminated loc as IOU ==0')
  		bbox_warp_image =self.get_cur_bbox_warp_image()#.astype(int)
+ 		if self.warp_multi_images:
+ 			surrounding_image_list =self.get_largerCenter_and_surrounding_warp_images()
+ 			surrounding_image_list.append(bbox_warp_image)
+ 			# ipdb.set_trace()
+ 			if len(bbox_warp_image.shape)<=2:
+ 				bbox_warp_image=np.dstack(surrounding_image_list)
+ 			else:
+ 				bbox_warp_image=np.concatenate(surrounding_image_list,axis=2)
+
+
  		return bbox_warp_image,reward, terminal
  
  	def get_reward(self):
@@ -267,7 +280,8 @@ class object_localization_env(object):
 
 
 class nature_object_env(object_localization_env):
-	def __init__(self):
+	def __init__(self,warp_multi_images=False):
+		super(nature_object_env,self).__init__(warp_multi_images)
 		pass
 	def getName(self):
 		return 'neuron_localization_env'
@@ -275,8 +289,8 @@ class nature_object_env(object_localization_env):
 		pass
 
 class neuron_object_env(object_localization_env):
-	def __init__(self):
-		super(neuron_object_env,self).__init__()
+	def __init__(self,warp_multi_images=False):
+		super(neuron_object_env,self).__init__(warp_multi_images)
 		self.data_obj=RL_neuron_data()
 		self.read_one_image()
 		self.init_starting_box()
@@ -335,33 +349,36 @@ class neuron_object_env(object_localization_env):
 		bbox_width =self.cur_bbox[1][0]-self.cur_bbox[0][0]
 		bbox_height =self.cur_bbox[1][1]-self.cur_bbox[0][1]
 		dx2=dx1=-int(round((bbox_width)/2.0))
-		dy2=dy1=-int(round((bbox_heigt)/2.0))
+		dy2=dy1=-int(round((bbox_height)/2.0))
 		topleft_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
 		dx2=dx1=int(round((bbox_width)/2.0))
-		dy2=dy1=-int(round((bbox_heigt)/2.0))
+		dy2=dy1=-int(round((bbox_height)/2.0))
 		topright_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
 		dx2=dx1=-int(round((bbox_width)/2.0))
-		dy2=dy1=int(round((bbox_heigt)/2.0))
+		dy2=dy1=int(round((bbox_height)/2.0))
 		bootomleft_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
 		dx2=dx1=int(round((bbox_width)/2.0))
-		dy2=dy1=int(round((bbox_heigt)/2.0))
+		dy2=dy1=int(round((bbox_height)/2.0))
 		bootomright_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
 		dx1=-int(round((bbox_width)*0.1))
-		dy1=-int(round((bbox_heigt)*0.1))
-		dx2=int(round((bbox_width)*0.1))
-		dy1=int(round((bbox_heigt)*0.1))
+		dy1=-int(round((bbox_height)*0.1))
+		dx2 =dx1*-1
+		dy2=dy1*-1
+		# dx2=int(round((bbox_width)*0.1))
+		# dy2=int(round((bbox_height)*0.1))
 		centerlager_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
-
 		warp_image_list =[]
 		warp_image_list.append(warp_image(self.cur_image,topleft_bbox))
 		warp_image_list.append(warp_image(self.cur_image,topright_bbox))
 		warp_image_list.append(warp_image(self.cur_image,topright_bbox))
 		warp_image_list.append(warp_image(self.cur_image,topleft_bbox))
-		warp_image_list.append(warp_image(self.cur_image,centerlager_bbox))
+		large_image=warp_image(self.cur_image,centerlager_bbox)
+		large_image=skimage.transform.resize(large_image,(bbox_width,bbox_height))
+		warp_image_list.append(large_image)
 		return warp_image_list
 
 class RL_data(object):

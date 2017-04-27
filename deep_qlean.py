@@ -50,7 +50,10 @@ netwrok_model['res_vgg_model']=deepmodel.res_vgg_model
 img_channels = 1
 def get_model_file(args):
     print(args)
-    file_name =args.cnn_model+'_'+args.data+'_netinput_size'+str(args.cnn_input_size)+ '_act_alpha-'+str(ACTION_ALPHA)+'.h5'
+    file_name =args.cnn_model+'_'+args.data+'_netinput_size'+str(args.cnn_input_size)+ '_act_alpha-'+str(ACTION_ALPHA)
+    if args.multi_warp:
+        file_name +='_multiwarp'
+    file_name+='.h5'
     return file_name
 def trainNetwork(model,args):
     # open up a game state to communicate with emulator
@@ -59,9 +62,9 @@ def trainNetwork(model,args):
     print(img_rows)
     # ipdb.set_trace()
     if args.data =='neuron':
-        object_loc_env=neuron_object_env()
+        object_loc_env=neuron_object_env(args.multi_warp)
     elif args.data =='nature':
-        object_loc_env=nature_object_env()
+        object_loc_env=nature_object_env(args.multi_warp)
     else:
         raise NameError(args.data  + ' :  No such env !' )
     object_loc_env.action_alpha=ACTION_ALPHA
@@ -88,6 +91,8 @@ def trainNetwork(model,args):
 
     #In Keras, need to reshape
     channels = 1 if len(s_t.shape) <=2 else s_t.shape[2]
+    # channels =channels*5 if args.multi_warp else channels
+
     s_t = s_t.reshape(1, s_t.shape[0], s_t.shape[1], channels)  #1*80*80*1 or 3
     s_at=np.array(action_history_st)
     s_at=np.reshape(s_at,(1,-1))
@@ -234,6 +239,8 @@ def start(args):
     img_rows =args.cnn_input_size
     img_cols  = img_rows
     img_channels =3 if args.data =='nature' else 1
+    if args.multi_warp:
+        img_channels*=6
     input_shape=(img_rows,img_cols,img_channels)
     action_history_shape =(9*10,)
     output_shape =(ACTIONS,)
@@ -252,6 +259,7 @@ def main():
     parser.add_argument('-d','--data',help='neuron/nature',default='neuron')
     parser.add_argument('-s','--cnn_input_size',help='network input size',type=int,default=80)
     parser.add_argument('-c','--cnn_model',help='deep q-net model',default='res_vgg_model')
+    parser.add_argument('-w','--multi_warp',help='warp multiple(5) surrounding images',type=bool,default=False)
     args = parser.parse_args()
     print(args)
     start(args)
