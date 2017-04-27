@@ -331,9 +331,38 @@ class neuron_object_env(object_localization_env):
 														bbox_to_4_scaler_list(self.objective_bbox))
 	def get_cur_bbox_warp_image(self):
 		return  warp_image(self.cur_image,self.cur_bbox)
+	def get_largerCenter_and_surrounding_warp_images(self):
+		bbox_width =self.cur_bbox[1][0]-self.cur_bbox[0][0]
+		bbox_height =self.cur_bbox[1][1]-self.cur_bbox[0][1]
+		dx2=dx1=-int(round((bbox_width)/2.0))
+		dy2=dy1=-int(round((bbox_heigt)/2.0))
+		topleft_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
+		dx2=dx1=int(round((bbox_width)/2.0))
+		dy2=dy1=-int(round((bbox_heigt)/2.0))
+		topright_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
+		dx2=dx1=-int(round((bbox_width)/2.0))
+		dy2=dy1=int(round((bbox_heigt)/2.0))
+		bootomleft_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
+		dx2=dx1=int(round((bbox_width)/2.0))
+		dy2=dy1=int(round((bbox_heigt)/2.0))
+		bootomright_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
+
+		dx1=-int(round((bbox_width)*0.1))
+		dy1=-int(round((bbox_heigt)*0.1))
+		dx2=int(round((bbox_width)*0.1))
+		dy1=int(round((bbox_heigt)*0.1))
+		centerlager_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
+
+		warp_image_list =[]
+		warp_image_list.append(warp_image(self.cur_image,topleft_bbox))
+		warp_image_list.append(warp_image(self.cur_image,topright_bbox))
+		warp_image_list.append(warp_image(self.cur_image,topright_bbox))
+		warp_image_list.append(warp_image(self.cur_image,topleft_bbox))
+		warp_image_list.append(warp_image(self.cur_image,centerlager_bbox))
+		return warp_image_list
 
 class RL_data(object):
 	def getName(self):

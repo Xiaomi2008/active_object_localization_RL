@@ -51,12 +51,13 @@ img_channels = 1
 def get_model_file(args):
     print(args)
     file_name =args.cnn_model+'_'+args.data+'_netinput_size'+str(args.cnn_input_size)+ '_act_alpha-'+str(ACTION_ALPHA)+'.h5'
+    return file_name
 def trainNetwork(model,args):
     # open up a game state to communicate with emulator
     # game_state = game.GameState()
     img_rows =img_cols = args.cnn_input_size
     print(img_rows)
-    ipdb.set_trace()
+    # ipdb.set_trace()
     if args.data =='neuron':
         object_loc_env=neuron_object_env()
     elif args.data =='nature':
@@ -81,15 +82,17 @@ def trainNetwork(model,args):
     s_t=x_t
     action_history_st =[np.zeros([ACTIONS]) for i in range(10)]
     action_history_st_1 =[np.zeros([ACTIONS]) for i in range(10)]
-
+    # ipdb.set_trace()
     # s_t = np.stack((x_t, x_t, x_t, x_t), axis=2)
     #print (s_t.shape)
 
     #In Keras, need to reshape
-    s_t = s_t.reshape(1, s_t.shape[0], s_t.shape[1], 1)  #1*80*80*1
+    channels = 1 if len(s_t.shape) <=2 else s_t.shape[2]
+    s_t = s_t.reshape(1, s_t.shape[0], s_t.shape[1], channels)  #1*80*80*1 or 3
     s_at=np.array(action_history_st)
     s_at=np.reshape(s_at,(1,-1))
     S_Ts=[s_t,s_at]
+    # ipdb.set_trace()
 
     
 
@@ -143,8 +146,8 @@ def trainNetwork(model,args):
         # x_t1 = skimage.color.rgb2gray(x_t1_colored)
         x_t1 = skimage.transform.resize(x_t1,(img_rows,img_rows))
         x_t1 = skimage.exposure.rescale_intensity(x_t1, out_range=(0, 255))
-
-        x_t1 = x_t1.reshape(1, x_t1.shape[0], x_t1.shape[1], 1) #1x80x80x1
+        channels = 1 if len(x_t1.shape) <=2 else x_t1.shape[2]
+        x_t1 = x_t1.reshape(1, x_t1.shape[0], x_t1.shape[1],channels) #1x80x80x1
         s_t1=x_t1
         
         # s_t1 = np.append(x_t1, s_t[:, :, :, :3], axis=3)
@@ -167,7 +170,8 @@ def trainNetwork(model,args):
             #sample a minibatch to train on
             minibatch = random.sample(D, BATCH)
             # ipdb.set_trace()
-            inputs = [np.zeros((BATCH, s_t.shape[1], s_t.shape[2], 1)),\
+            # channels = 1 if len(s_t.shape) <=2 else s_t.shape[2]
+            inputs = [np.zeros((BATCH, s_t.shape[1], s_t.shape[2], s_t.shape[2])),\
                         np.zeros((BATCH, s_at1.shape[1]))]   #32, 80, 80, 1
             # print (inputs.shape)
             targets = np.zeros((inputs[0].shape[0], ACTIONS))                         #32, 9
@@ -200,10 +204,11 @@ def trainNetwork(model,args):
         t = t + 1
 
         # save progress every 10000 iterations
-        if t % 4000 == 0:
+        if t % 3000 == 0:
             print("Now we save model")
             # model.save_weights("model.h5", overwrite=True)
-            # model.save_weights(model_file, overwrite=True)
+            # ipdb.set_trace()
+            model.save_weights(model_file, overwrite=True)
             # with open("model.json", "w") as outfile:
             with open(model_file[:-4]+'.json',"w") as outfile:
                 json.dump(model.to_json(), outfile)
