@@ -22,13 +22,28 @@ def check_cornerInbox(source_box,target_box):
 			break
 	return is_intersect
 
+def check_bbox_intersection(bboxA,bboxB):
+	aXs=[bboxA[0],bboxA[2]]
+	aYs=[bboxA[1],bboxA[3]]
+
+	bXs=[bboxB[0],bboxB[2]]
+	bYs=[bboxB[1],bboxB[3]]
+
+	if max(aXs)<min(bXs) or min(aXs)>max(bXs) or max(aYs)<min(bYs) or min(aYs)>max(bYs):
+		return False
+	else:
+		return True
+
 
 def bb_intersection_over_union(boxA, boxB):
  		# This function code is modified based on code from http://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
 		# determine the (x, y)-coordinates of the intersection rectangle
 		# ipdb.set_trace()
 
-		if not (check_cornerInbox(boxA,boxB) or check_cornerInbox(boxB,boxA)):
+		# if not (check_cornerInbox(boxA,boxB) or check_cornerInbox(boxB,boxA)):
+		# 	return 0
+		# ipdb.set_trace()
+		if not check_bbox_intersection(boxA,boxB):
 			return 0
 		xA = max(boxA[0], boxB[0])
 		yA = max(boxA[1], boxB[1])
@@ -124,8 +139,8 @@ def relabel_disconnected_seglabel(seg_label):
 class object_localization_env(object):
  	def __init__(self,warp_multi_images=False):
  		self.data_obj =None
- 		self.init_box_x_range = [45,85]
- 		self.init_box_y_range = [45,85]
+ 		self.init_box_x_range = [15,100]
+ 		self.init_box_y_range = [15,100]
  		self.cur_bbox =None
 		self.objective_bbox =None
 		self.action_alpha=0.15
@@ -308,9 +323,11 @@ class neuron_object_env(object_localization_env):
 		self.transposed_image =np.transpose(image)
 	def get_random_start_bbox(self):
 		x_left 			=	random.randint(0,self.x_size-self.init_box_x_range[1])
-		x_right 		= 	x_left+random.randint(self.init_box_x_range[0], self.init_box_x_range[1])
+		width           =	random.randint(self.init_box_x_range[0], self.init_box_x_range[1])
+		x_right 		= 	x_left+width
 		y_top 			=	random.randint(0,self.y_size-self.init_box_y_range[1])
-		y_bottom 		= 	y_top+random.randint(self.init_box_y_range[0], self.init_box_y_range[1])
+		y_bottom 		= 	y_top+width # make a square box
+		# y_bottom 		= 	y_top+random.randint(self.init_box_y_range[0], self.init_box_y_range[1])
 		self.cur_bbox 	=	[[x_left,y_top],[x_right,y_bottom]]
 	def find_center_label(self,bbox):
 		cent_x= int(round(bbox[0] + (bbox[2]-bbox[0])/2.0))

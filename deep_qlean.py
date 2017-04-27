@@ -171,7 +171,7 @@ def trainNetwork(model,args):
 
         #only train if done observing
         if t > OBSERVE:
-            # object_loc_env.show_step()
+            object_loc_env.show_step()
             #sample a minibatch to train on
             minibatch = random.sample(D, BATCH)
             # ipdb.set_trace()
@@ -215,7 +215,7 @@ def trainNetwork(model,args):
             # ipdb.set_trace()
             model.save_weights(model_file, overwrite=True)
             # with open("model.json", "w") as outfile:
-            with open(model_file[:-4]+'.json',"w") as outfile:
+            with open(model_file[:-3]+'.json',"w") as outfile:
                 json.dump(model.to_json(), outfile)
 
         # print info
