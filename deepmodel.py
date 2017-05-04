@@ -15,7 +15,7 @@ from keras.models import Model
 from keras.layers.merge import add, multiply, concatenate
 from keras.layers.normalization import BatchNormalization
 from keras.models import Sequential
-ACTIONS =9
+# ACTIONS =9
 
 def res_vgg_model(input_shape_1,input_shape_2,output_shape):
 	ip1 = Input(shape=input_shape_1,name = 'warp_image')
@@ -63,7 +63,7 @@ def res_vgg_model(input_shape_1,input_shape_2,output_shape):
 	d2=Dropout(0.5)(d2)
 	d3=Dense(1024, activation='relu')(d2)
 	d3=Dropout(0.5)(d3)
-	out=Dense(ACTIONS)(d3)
+	out=Dense(output_shape[0])(d3)
 	return (ip1,ip2), out
 	
 

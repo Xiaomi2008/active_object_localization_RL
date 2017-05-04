@@ -21,7 +21,6 @@ def check_cornerInbox(source_box,target_box):
 			is_intersect = True
 			break
 	return is_intersect
-
 def check_bbox_intersection(bboxA,bboxB):
 	aXs=[bboxA[0],bboxA[2]]
 	aYs=[bboxA[1],bboxA[3]]
@@ -34,7 +33,19 @@ def check_bbox_intersection(bboxA,bboxB):
 	else:
 		return True
 
-
+def center_distance(boxA, boxB):
+	center_Ax =boxA[0]+(boxA[2]-boxA[0])/2.0
+	center_Ay =boxA[1]+(boxA[3]-boxA[1])/2.0
+	center_Bx =boxB[0]+(boxB[2]-boxB[0])/2.0
+	center_By =boxB[1]+(boxB[3]-boxB[1])/2.0
+	dy=abs(center_Bx-center_Ax)
+	dx=abs(center_By-center_Ay)
+	return dy+dx
+def center_distance_ratio(box_source, boxTarget):
+	dist=center_distance(box_source,boxTarget)
+	width=abs(boxTarget[2]-boxTarget[0])
+	height =abs(boxTarget[3]-boxTarget[1])
+	return dist/float(width+height)
 def bb_intersection_over_union(boxA, boxB):
  		# This function code is modified based on code from http://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
 		# determine the (x, y)-coordinates of the intersection rectangle
@@ -89,18 +100,26 @@ def deform_bbox(bbox,x_size,y_size,dx1,dy1,dx2,dy2):
  	if bbox[0][0]+dx1 <0:
  		if dx1==dx2:
  			dx2=-bbox[0][0]
+ 		# if bbox[1][0]+dx2<=0:
+ 		# 	dx2=-bbox[1][0]+5
  		dx1=-bbox[0][0]
  	if bbox[1][0]+dx2>x_size-1:
  		if dx1==dx2:
  			dx1=x_size-bbox[1][0]-1
+ 		# if bbox[0][0]+dx1>x_size-1:
+ 		# 	dx1=x_size-bbox[0][0]-5
  		dx2=x_size-bbox[1][0]-1
  	if bbox[0][1]+dy1 <0:
  		if dy1==dy2:
  			dy2=-bbox[0][1]
+ 		# if bbox[1][1]+dy2<=0:
+ 		# 	dy2=-bbox[1][1]+5
  		dy1=-bbox[0][1]
  	if bbox[1][1]+dy2>y_size-1:
  		if dy1==dy2:
  			dy1=y_size-bbox[1][1]-1
+ 		# if bbox[0][1]+dy1>y_size-1:
+ 		# 	dy1=y_size-bbox[0][1]-5
  		dy2=y_size-bbox[1][1]-1 
 
  	new_bbox=[[bbox[0][0]+dx1,bbox[0][1]+dy1],[bbox[1][0]+dx2,bbox[1][1]+dy2]]
@@ -108,9 +127,30 @@ def deform_bbox(bbox,x_size,y_size,dx1,dy1,dx2,dy2):
 def warp_image(image, bbox):
 	x_size=image.shape[0]
 	y_size=image.shape[1]
-	assert(bbox[1][0]<x_size)
-	assert(bbox[1][1]<y_size)
-	warp_im = image[bbox[0][0]:bbox[1][0],bbox[0][1]:bbox[1][1]]
+	# assert(bbox[1][0]<=x_size)
+	# assert(bbox[1][1]<=y_size)
+	w=abs(bbox[1][0]-bbox[0][0])
+	h=abs(bbox[1][1]-bbox[0][1])
+	s_x1=max(0,bbox[0][0])
+	s_x2=max(0,bbox[1][0])
+	s_x1=min(x_size-1,s_x1)
+	s_x2=min(x_size-1,s_x2)  
+
+	s_y1=max(0,bbox[0][1])
+	s_y2=max(0,bbox[1][1])
+	s_y1=min(y_size-1,s_y1)
+	s_y2=min(y_size-1,s_y2)
+
+
+	t_x1=abs(min(0,bbox[0][0]))
+	t_y1=abs(min(0,bbox[0][1]))
+	# ipdb.set_trace()
+	# try:
+	if min(bbox[0][0],bbox[0][1])<0 or max(bbox[0][0],bbox[0][1])>x_size-1 or min(bbox[1][0],bbox[1][1])<0 or max(bbox[1][0],bbox[1][1])>y_size-1:
+		warp_im =np.zeros([w,h])
+		warp_im[t_x1:t_x1+(s_x2-s_x1),t_y1:t_y1+(s_y2-s_y1)] = image[s_x1:s_x2,s_y1:s_y2]
+	else:
+		warp_im = image[bbox[0][0]:bbox[1][0],bbox[0][1]:bbox[1][1]]
 	return warp_im
 
 def relabel_disconnected_seglabel(seg_label):
@@ -139,16 +179,18 @@ def relabel_disconnected_seglabel(seg_label):
 class object_localization_env(object):
  	def __init__(self,warp_multi_images=False):
  		self.data_obj =None
- 		self.init_box_x_range = [15,100]
- 		self.init_box_y_range = [15,100]
+ 		self.init_box_x_range = [20,150]
+ 		self.init_box_y_range = [20,150]
  		self.cur_bbox =None
 		self.objective_bbox =None
-		self.action_alpha=0.15
+		self.action_alpha=0.035
+		self.move_alpha=self.action_alpha/2.0
 		self.previous_IOU = None
-		self.tal =  0.6
+		self.tal =  0.7
 		self.eta =  3.0 
 		self.fig,self.ax =plt.subplots(1)
 		self.warp_multi_images=warp_multi_images
+		self.ACTIONS =13
  	def getName(self):
  		return 'base_env'
  	def show_step(self):
@@ -178,23 +220,57 @@ class object_localization_env(object):
 		plt.draw()
 		# plt.show()
 		plt.pause(0.00001)
+	def get_guid_action(self):
+		
+		action_list =[i for i in range(self.ACTIONS)] # exclude
+		temp_bbox =self.cur_bbox
+		temp_iou =-100
+		max_action=-1
+		for action in action_list:
+			# if ACTIONS ==12:
+			# 	self.update_cur_boox_with_extra_diagnal_action(action)
+			# elif ACTIONS ==9:
+			# 	self.update_cur_boox_with_extra_diagnal_action(action)
+			self.update_cur_boox_with_extra_diagnal_action(action)
+			iou_with_objective =self.get_current_iou()
+			if temp_iou <iou_with_objective:
+				temp_iou =iou_with_objective
+				max_action = action
+			elif temp_iou==iou_with_objective:
+				max_action = action if random.randint(0,1)==0 else max_action
+		self.cur_bbox = temp_bbox
+		return max_action
+	def get_current_iou(self):
+		iou_with_objective =bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox))
+		return iou_with_objective
  	def localization_step(self,action):
- 		self.step_counts+=1
+ 		
+ 		# iou_with_objective =self.get_current_iou()
+ 		# if iou_with_objective >0.85: # trying to teach agent to faster learan trigger actioin
+ 			# action =8
 
  		if action != 8:
  			# ipdb.set_trace()
- 			self.update_current_bbox_with_action(action)
+ 			# self.update_current_bbox_with_action(action)
+ 			self.update_cur_boox_with_extra_diagnal_action(action)
  			# iou_with_objective =bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox))
  			# ipdb.set_trace()
  			reward,iou_with_objective = self.get_reward()
+ 			# reward = reward-self.step_counts*0.02
  		else:
  			# for trigger action
- 			iou_with_objective =bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox))
+ 			# iou_with_objective =bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox))
+ 			iou_with_objective =self.get_current_iou()
  			reward = self.eta if  iou_with_objective > self.tal else -1*self.eta
+
+ 		
+ 		self.step_counts+=1
  
- 		if action==8 or iou_with_objective ==0 or self.step_counts >60:
+ 		if action==8 or iou_with_objective ==0 or self.step_counts >40:
  			terminal = True
  			self.init_starting_box()
+
+ 			# reward = -6 if self.step_counts >60 else reward
  		else:
  			terminal = False
  		if iou_with_objective ==0:
@@ -208,51 +284,69 @@ class object_localization_env(object):
  				bbox_warp_image=np.dstack(surrounding_image_list)
  			else:
  				bbox_warp_image=np.concatenate(surrounding_image_list,axis=2)
-
-
+ 		
  		return bbox_warp_image,reward, terminal
  
  	def get_reward(self):
  		cur_iou = bb_intersection_over_union(bbox_to_4_scaler_list(self.objective_bbox),bbox_to_4_scaler_list(self.cur_bbox))
  		reward = 1 if (cur_iou -self.previous_IOU)>0 else -1
  		self.previous_IOU =cur_iou
+ 		# reward = -1
  		return reward,cur_iou
+ 	def update_cur_boox_with_extra_diagnal_action(self,action):
+ 		assert(action<13)
+ 		if action ==9:
+ 			self.update_current_bbox_with_action(0)
+ 			self.update_current_bbox_with_action(2)
+ 		elif action ==10:
+ 			self.update_current_bbox_with_action(0)
+ 			self.update_current_bbox_with_action(3)
+ 		elif action ==11:
+ 			self.update_current_bbox_with_action(1)
+ 			self.update_current_bbox_with_action(2)
+ 		elif action ==12:
+ 			self.update_current_bbox_with_action(1)
+ 			self.update_current_bbox_with_action(3)
+ 		else:
+ 			self.update_current_bbox_with_action(action)
 
  	def update_current_bbox_with_action(self,action):
  		alpha_w = int(round(self.action_alpha *(self.cur_bbox[1][0]-self.cur_bbox[0][0])))
  		alpha_h = int(round(self.action_alpha *(self.cur_bbox[1][1]-self.cur_bbox[0][1])))
+ 		m_alpha_w = int(round(alpha_w*0.5)) #int(round(self.move_alpha *(self.cur_bbox[1][0]-self.cur_bbox[0][0])))
+ 		m_alpha_h = int(round(alpha_h*0.5)) #int(round(self.move_alpha *(self.cur_bbox[1][1]-self.cur_bbox[0][1])))
  		if action == 0:
  			# move left
  			# self.cur_bbox = [[int(round(self.cur_bbox[0][0]-alpha_w)),self.cur_bbox[1][0]],
  			# 				[int(round(self.cur_bbox[1][0]-alpha_w)),self.cur_bbox[1][0]]]
- 			dx1=-alpha_w
+ 			dx1=-m_alpha_w
  			dy1=0
- 			dx2=-alpha_w
+ 			dx2=-m_alpha_w
  			dy2=0
  		elif action ==1:
  			#move right
  			# self.cur_bbox = [[int(round(self.cur_bbox[0][0]+alpha_w)),self.cur_bbox[1][0]],
  							# [self.cur_bbox[1][0]+alpha_w,self.cur_bbox[1][0]]]
- 			dx1=alpha_w
+ 			dx1=m_alpha_w
  			dy1=0
- 			dx2=alpha_w
+ 			dx2=m_alpha_w
  			dy2=0
  		elif action ==2:
  			#move up
  			# self.cur_bbox = [[self.cur_bbox[0][0],int(round(self.cur_bbox[0][1]-alpha_h))],
  			# 				[self.cur_bbox[1][0],int(round(self.cur_bbox[1][1]-alpha_h))]]
  			dx1=0
- 			dy1=-alpha_h
+ 			dy1=-m_alpha_h
  			dx2=0
- 			dy2=-alpha_h
+ 			dy2=-m_alpha_h
  		elif action ==3:
  			#move_down
  			# self.cur_bbox = [[self.cur_bbox[0][0],int(round(self.cur_bbox[0][1]+alpha_h))],
  			# 				[self.cur_bbox[1][0],int(round(self.cur_bbox[1][1]+alpha_h))]]
  			dx1=0
- 			dy1=alpha_h
+ 			dy1=m_alpha_h
  			dx2=0
- 			dy2=alpha_h
+ 			dy2=m_alpha_h
  		elif action ==4:
  			#bigger
  			# self.cur_bbox =[[int(round(self.cur_bbox[0][0]-alpha_w/2)),int(round(self.cur_bbox[1][0]-alpha_h/2))],
@@ -312,7 +406,7 @@ class neuron_object_env(object_localization_env):
 	def getName(self):
 		return 'neuron_localization_env'
 	def read_one_image(self):
-		slice_idx =50
+		slice_idx =20
 		image,seg_label,all_bbox  =	self.data_obj.get_image_with_boundingBox(slice_idx)
 		# ipdb.set_trace()
 		self.all_bbox	=	all_bbox
@@ -338,7 +432,20 @@ class neuron_object_env(object_localization_env):
 			n_y= cent_y+random.randrange(-15,15)
 			lb=self.seg_label[n_x,n_y]
 		return lb
-
+	def get_reward(self):
+		reward,iou=super(neuron_object_env,self).get_reward()
+ 		# cur_dist=center_distance(bbox_to_4_scaler_list(self.cur_bbox),
+														# bbox_to_4_scaler_list(self.objective_bbox))
+ 		# if cur_dist <12:
+ 		# 	if self.previous_center_dist-cur_dist >0:
+ 		# 		dist_reward= 1
+ 		# 	else:
+ 		# 		dist_reward =0
+ 		# else:
+ 		# 	dist_reward=0.5  if cur_dist < self.previous_center_dist else -0.5
+ 		# reward=reward+(1-center_distance_ratio(bbox_to_4_scaler_list(self.cur_bbox),bbox_to_4_scaler_list(self.objective_bbox)))
+ 		# self.previous_center_dist =cur_dist
+ 		return reward, iou
 	def init_starting_box(self):
 		
 		# ipdb.set_trace()
@@ -347,8 +454,17 @@ class neuron_object_env(object_localization_env):
 		# ipdb.set_trace()
 		all_box_list = self.all_bbox.values()
 		all_box_keys = self.all_bbox.keys()
-		self.get_random_start_bbox()
-		lb=self.find_center_label(bbox_to_4_scaler_list(self.cur_bbox))
+
+		# make sure the start box to contain only one label in order to not cofuse agent //experimental
+		while True:
+			self.get_random_start_bbox()
+			warp_label =warp_image(self.seg_label, self.cur_bbox)
+			unique_objs=np.unique(warp_label)
+	 		unique_objs=unique_objs[np.nonzero(unique_objs)]
+	 		if len(unique_objs) <2:
+	 			break
+
+ 		lb=self.find_center_label(bbox_to_4_scaler_list(self.cur_bbox))
 		self.objective_bbox =self.all_bbox[lb]
 		# while True:
 		# 	self.get_random_start_bbox()
@@ -359,6 +475,8 @@ class neuron_object_env(object_localization_env):
 		# largest_lb=all_box_keys[idx]
 		# ipdb.set_trace()
 		self.previous_IOU   = bb_intersection_over_union(bbox_to_4_scaler_list(self.cur_bbox),
+														bbox_to_4_scaler_list(self.objective_bbox))
+		self.previous_center_dist =center_distance(bbox_to_4_scaler_list(self.cur_bbox),
 														bbox_to_4_scaler_list(self.objective_bbox))
 	def get_cur_bbox_warp_image(self):
 		return  warp_image(self.cur_image,self.cur_bbox)
@@ -375,11 +493,11 @@ class neuron_object_env(object_localization_env):
 
 		dx2=dx1=-int(round((bbox_width)/2.0))
 		dy2=dy1=int(round((bbox_height)/2.0))
-		bootomleft_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
+		buttomleft_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
 		dx2=dx1=int(round((bbox_width)/2.0))
 		dy2=dy1=int(round((bbox_height)/2.0))
-		bootomright_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
+		buttomright_bbox=deform_bbox(self.cur_bbox,self.x_size,self.y_size,dx1,dy1,dx2,dy2)
 
 		dx1=-int(round((bbox_width)*0.1))
 		dy1=-int(round((bbox_height)*0.1))
@@ -391,8 +509,8 @@ class neuron_object_env(object_localization_env):
 		warp_image_list =[]
 		warp_image_list.append(warp_image(self.cur_image,topleft_bbox))
 		warp_image_list.append(warp_image(self.cur_image,topright_bbox))
-		warp_image_list.append(warp_image(self.cur_image,topright_bbox))
-		warp_image_list.append(warp_image(self.cur_image,topleft_bbox))
+		warp_image_list.append(warp_image(self.cur_image,buttomleft_bbox))
+		warp_image_list.append(warp_image(self.cur_image,buttomright_bbox))
 		large_image=warp_image(self.cur_image,centerlager_bbox)
 		large_image=skimage.transform.resize(large_image,(bbox_width,bbox_height))
 		warp_image_list.append(large_image)
@@ -475,11 +593,11 @@ def test_env():
 
 
 	env = neuron_object_env()
-	fig,ax =plt.subplots(2)
+	fig,ax =plt.subplots(1)
 	# fig2,ax2 =plt.subplots(1)
 	action_discription={0:'left',1:'right',2:'up',3:'bottom',4:'bigger',5:'smaller',6:'fatter',7:'toller',8:'triger'}
 	for i in range(50):
-		action=random.randint(0,8)
+		action=random.randint(0,12)
 		warp_x, reward, terminal=env.localization_step(action)
 		print('Action = {}'.format(action_discription[action]))
 		bbox=env.cur_bbox
@@ -497,28 +615,42 @@ def test_env():
 		warp_x=np.transpose(warp_x)
 		image =np.transpose(image)
 		# ipdb.set_trace()
-		ax[0].clear()
-		ax[0].imshow(label_rgb_im,cmap='gray')
+		# ax[0].clear()
+		# ax[0].imshow(label_rgb_im,cmap='gray')
+		# ax.imshow(label_rgb_im,cmap='gray')
+		ax.imshow(image,cmap='gray')
 		# ax[0].imshow(image,cmap='gray')
 		# ipdb.set_trace()
-		ax[1].clear()
-		ax[1].imshow(warp_x,cmap='gray')
+		# ax[1].clear()
+		# ax[1].imshow(warp_x,cmap='gray')
 		
 		# ax=plt.imshow(image,cmap='gray')
 		ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
 		ppxy_o,w_o,h_o=conver_bbox_to_xy_width_height(env.objective_bbox)
-		move_rect = patches.Rectangle(ppxy,w,h,linewidth=3,edgecolor='w',facecolor='none')
+		move_rect = patches.Rectangle(ppxy,w,h,linewidth=3,edgecolor='b',facecolor='none')
 		obj_rect =  patches.Rectangle(ppxy_o,w_o,h_o,linewidth=2,edgecolor='g',facecolor='none')
-		ax[0].add_patch(move_rect)
-		ax[0].add_patch(obj_rect)
-		for bbox in all_box[0:50]:
+		ax.add_patch(move_rect)
+		ax.add_patch(obj_rect)
+		for bbox in all_box[100:150]:
 			ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
-			each_rect = patches.Rectangle(ppxy,w,h,linewidth=1,edgecolor='w',facecolor='none')
-			ax[0].add_patch(each_rect)
+			each_rect = patches.Rectangle(ppxy,w,h,linewidth=2,edgecolor='r',facecolor='none')
+			ax.add_patch(each_rect)
+			px=ppxy[0]+random.randint(-30,30)
+			py=ppxy[1]+random.randint(-30,30)
+			sign= -1 if random.random()>0.5 else 1
+			w = w+w * random.random()*0.3*sign
+			sign= -1 if random.random()>0.5 else 1
+			h = h+h * random.random()*0.3*sign
+			each_rect = patches.Rectangle((px,py),w,h,linewidth=2,edgecolor='w',facecolor='none')
+			ax.add_patch(each_rect)
+		# for bbox in all_box[0:50]:
+		# 	ppxy,w,h=conver_bbox_to_xy_width_height(bbox)
+		# 	each_rect = patches.Rectangle(ppxy,w,h,linewidth=2,edgecolor='g',facecolor='none')
+		# 	ax.add_patch(each_rect)
 
-		plt.draw()
-		# plt.show()
-		plt.pause(0.05)
+		#lt.draw()
+		plt.show()
+		# plt.pause(0.05)
 
 if __name__ == "__main__":
 	# test_iou()

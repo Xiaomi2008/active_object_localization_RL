@@ -30,22 +30,25 @@ from keras.optimizers import RMSprop, SGD,Adam
 import matplotlib.pyplot as plt
 from keras import metrics
 from keras import losses
-
+ACTION_HISTORY=20
 CONFIG = 'nothreshold'
-ACTIONS = 9 # number of valid actions
+ACTIONS = 13 # number of valid actions
 GAMMA = 0.99 # decay rate of past observations
 OBSERVATION = 3000. # timesteps to observe before training
-EXPLORE = 3000000. # frames over which to anneal epsilon
+EXPLORE = 50000. # frames over which to anneal epsilon
 FINAL_EPSILON = 0.0001 # final value of epsilon
-INITIAL_EPSILON = 0.18 # starting value of epsilon
+INITIAL_EPSILON = 0.15 # starting value of epsilon
 REPLAY_MEMORY = 50000 # number of previous transitions to remember
 BATCH = 32 # size of minibatch
 FRAME_PER_ACTION = 1
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 1e-4
 ACTION_ALPHA  = 0.15
 action_discription={0:'left',1:'right',2:'up',3:'bottom',4:'bigger',5:'smaller',6:'fatter',7:'toller',8:'triger'}
 netwrok_model={}
 netwrok_model['res_vgg_model']=deepmodel.res_vgg_model
+DECAY_TEACH =0.00001
+TEACH_START_RATE =0.95
+TEACH_END_RATE =0.0001
 #Convert image into Black and white
 img_channels = 1
 def get_model_file(args):
@@ -74,8 +77,8 @@ def trainNetwork(model,args):
     D =deque()
 
     # get the first state by doing nothing and preprocess the image to 80x80x4
-    do_nothing = np.zeros(ACTIONS)
-    do_nothing[0] = 1
+    # do_nothing = np.zeros(ACTIONS)
+    # do_nothing[0] = 1
     # sipdb.set_trace()
     x_t, r_0, terminal = object_loc_env.localization_step(0)
 
@@ -83,8 +86,8 @@ def trainNetwork(model,args):
     x_t = skimage.transform.resize(x_t,(img_rows,img_rows))
     x_t = skimage.exposure.rescale_intensity(x_t,out_range=(0,255))
     s_t=x_t
-    action_history_st =[np.zeros([ACTIONS]) for i in range(10)]
-    action_history_st_1 =[np.zeros([ACTIONS]) for i in range(10)]
+    action_history_st =[np.zeros([ACTIONS+1]) for i in range(ACTION_HISTORY)]
+    action_history_st_1 =[np.zeros([ACTIONS+1]) for i in range(ACTION_HISTORY)]
     # ipdb.set_trace()
     # s_t = np.stack((x_t, x_t, x_t, x_t), axis=2)
     #print (s_t.shape)
@@ -113,6 +116,7 @@ def trainNetwork(model,args):
     else:                       #We go to training mode
         OBSERVE = OBSERVATION
         epsilon = INITIAL_EPSILON
+        teach    = TEACH_START_RATE
         try:
             model.load_weights(model_file)
         except:
@@ -121,30 +125,44 @@ def trainNetwork(model,args):
         # model.load_weights("model.h5")
 
     t = 0
-    
+    previous_action =-1
     while (True):
         loss = 0
         Q_sa = 0
         action_index = 0
         r_t = 0
-        a_t = np.zeros([ACTIONS])
+        a_t = np.zeros([ACTIONS+1])
         #choose an action epsilon greedy
         if t % FRAME_PER_ACTION == 0:
-            if random.random() <= epsilon:
-                print("----------Random Action----------")
-                action_index = random.randrange(ACTIONS)
-                a_t[action_index] = 1
+            if random.random() < teach:
+                # print("----------Random Action----------")
+                iou_with_objective =object_loc_env.get_current_iou()
+                if iou_with_objective>object_loc_env.tal:
+                    print("----------Teach triger Action----------")
+                    action_index =8
+                else:
+                    print("----------Teach Action----------")
+                    action_index=object_loc_env.get_guid_action()
+                    # action_index = random.randrange(ACTIONS)
+                a_t[action_index+1] = 1
+                print('IOU ={}'.format(iou_with_objective))
+
+        # if iou_with_objective >0.85: # trying to teach agent to faster learan trigger actioin
+            # action =8
             else:
                 # q = model.predict(s_t)       #input a stack of 4 images, get the prediction
-                q= model.predict(S_Ts)
-                max_Q = np.argmax(q)
-                action_index = max_Q
-                a_t[max_Q] = 1
-                # a_t= action_index
+                if random.random() <= epsilon:
+                    action_index = random.randrange(ACTIONS)
+                    a_t[action_index+1] = 1
+                else:
+                    q= model.predict(S_Ts)
+                    max_Q = np.argmax(q)
+                    action_index = max_Q
+                    a_t[max_Q+1] = 1
         #We reduced the epsilon gradually
         if epsilon > FINAL_EPSILON and t > OBSERVE:
             epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
-
+        teach   -=(TEACH_START_RATE - TEACH_END_RATE) / 30000
         #run the selected action and observed next state and reward
         x_t1, r_t, terminal = object_loc_env.localization_step(action_index)
 
@@ -154,17 +172,20 @@ def trainNetwork(model,args):
         channels = 1 if len(x_t1.shape) <=2 else x_t1.shape[2]
         x_t1 = x_t1.reshape(1, x_t1.shape[0], x_t1.shape[1],channels) #1x80x80x1
         s_t1=x_t1
-        
-        # s_t1 = np.append(x_t1, s_t[:, :, :, :3], axis=3)
-
         # store the transition in D
+        if action_index ==8:  # reset history once trigger action occurs
+            # action_history_st =[np.zeros([ACTIONS+1]) for i in range(ACTION_HISTORY)]
+            action_history_st_1 =[np.zeros([ACTIONS+1]) for i in range(ACTION_HISTORY)]
+        else:
+            action_history_st_1.pop(0)
+            action_history_st_1.append(a_t)
+
         s_at1=np.array(action_history_st_1)
         s_at1=np.reshape(s_at1,(1,-1))
         S_Ts1=[s_t1,s_at1]
         D.append((S_Ts, action_index, r_t, S_Ts1,terminal))
-        # D.append((s_t, action_index, r_t, s_t1, terminal))
-        action_history_st.pop(0)
-        action_history_st.append(a_t)
+        S_Ts    = S_Ts1
+        t       = t + 1
 
         if len(D) > REPLAY_MEMORY:
             D.popleft()
@@ -204,9 +225,7 @@ def trainNetwork(model,args):
             # targets2 = normalize(targets)
             loss += model.train_on_batch(inputs, targets)
 
-        s_t = s_t1
-        S_Ts = S_Ts1
-        t = t + 1
+        
 
         # save progress every 10000 iterations
         if t % 4000 == 0:
@@ -228,7 +247,7 @@ def trainNetwork(model,args):
             state = "train"
 
         print("TIMESTEP", t, "/ STATE", state, \
-            "/ EPSILON", epsilon, "/ ACTION", action_index, "/ REWARD", r_t, \
+            "/ EPSILON", epsilon, "/TEACH ", teach, "/ ACTION", action_index, "/ REWARD", r_t, \
             "/ Q_MAX " , np.max(Q_sa), "/ Loss ", loss)
 
     print("Episode finished!")
@@ -242,7 +261,8 @@ def start(args):
     if args.multi_warp:
         img_channels*=6
     input_shape=(img_rows,img_cols,img_channels)
-    action_history_shape =(9*10,)
+    action_history_shape =((ACTIONS+1)*ACTION_HISTORY,) #action 0 indicate not hstory
+    # ipdb.set_trace()
     output_shape =(ACTIONS,)
     # ips,out =deepmodel.res_vgg_model(input_shape, action_history_shape,output_shape)
     ips,out=netwrok_model[args.cnn_model](input_shape, action_history_shape,output_shape)
